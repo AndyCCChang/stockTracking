@@ -12,9 +12,14 @@ A personal US stock trading journal and P&L dashboard with a React + Vite client
 - Added modular trade math, replaceable price service abstraction, and separated frontend/backend packages.
 
 ## How to run it
-1. `npm install`
-2. `npm run dev`
-3. Open `http://localhost:5173`
+1. `Use Node 20+ and npm 10+` (`nvm use` will pick up `.nvmrc` if you use `nvm`).
+2. `npm install`
+3. `npm run dev`
+4. Open `http://localhost:5173`
+
+## Notes
+- The current toolchain uses modern syntax and dev tools like Vite 6 and tsx 4, so Node 10 / npm 6 will fail during startup.
+- If you only want one side of the app, use `npm run dev:server` or `npm run dev:client` from the repo root.
 
 ## Assumptions made
 - Latest prices use a static fallback price service so the app remains runnable without external API keys.
