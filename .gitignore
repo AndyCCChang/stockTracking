@@ -3,5 +3,6 @@ dist
 client/dist
 server/dist
 *.sqlite
+*.sqlite-*
 *.db
 .env

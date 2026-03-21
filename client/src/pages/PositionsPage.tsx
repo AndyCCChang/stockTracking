@@ -1,26 +1,13 @@
-import { currency, number } from '../lib/format';
-import type { PositionSummary } from '../types/trade';
-
-export function PositionsPage({ positions }: { positions: PositionSummary[] }) {
+export function PositionsPage() {
   return (
-    <div className="rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
-      <table className="min-w-full text-sm">
-        <thead className="bg-slate-50 dark:bg-slate-800/50">
-          <tr>{['Symbol', 'Qty', 'Avg Cost', 'Market Price', 'Market Value', 'Unrealized P&L'].map((heading) => <th key={heading} className="px-4 py-3 text-left">{heading}</th>)}</tr>
-        </thead>
-        <tbody>
-          {positions.map((position) => (
-            <tr key={position.symbol} className="border-t border-slate-200 dark:border-slate-800">
-              <td className="px-4 py-3 font-medium">{position.symbol}</td>
-              <td className="px-4 py-3">{number(position.quantity)}</td>
-              <td className="px-4 py-3">{currency(position.averageCost)}</td>
-              <td className="px-4 py-3">{currency(position.marketPrice)}</td>
-              <td className="px-4 py-3">{currency(position.marketValue)}</td>
-              <td className={`px-4 py-3 ${position.unrealizedPnL >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>{currency(position.unrealizedPnL)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+    <section className="space-y-4">
+      <div>
+        <h2 className="text-2xl font-semibold text-white">Positions</h2>
+        <p className="mt-2 text-sm text-slate-400">Current holdings, allocation, and unrealized PnL modules will land in the next phase.</p>
+      </div>
+      <div className="rounded-2xl border border-dashed border-white/15 bg-white/5 p-6 text-sm text-slate-300">
+        Placeholder for open position cards, allocation breakdown, and exposure metrics.
+      </div>
+    </section>
   );
 }

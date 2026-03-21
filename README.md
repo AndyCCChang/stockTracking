@@ -1,26 +1,81 @@
 # Stock Tracking Journal
 
-A personal US stock trading journal and P&L dashboard with a React + Vite client and an Express + SQLite server.
+A phase-1 full-stack project for US stock trade records and profit analysis.
 
-## What was added
-- Full-stack monorepo structure for `client` and `server`.
-- SQLite-backed trade journal API with validation, FIFO realized P&L, positions, yearly performance, metrics, and CSV import/export.
-- React dashboard with dark mode, charts, trade CRUD, and analytics pages.
+## Tech Stack
+- Client: React + TypeScript + Vite + Tailwind CSS
+- Server: Node.js + Express + TypeScript
+- Database: SQLite
+- Charts: Recharts
+- Dates: dayjs
+- HTTP client: axios
 
-## What was changed
-- Bootstrapped the repository from an empty state into a runnable project.
-- Added modular trade math, replaceable price service abstraction, and separated frontend/backend packages.
+## Phase 1 Scope
+- Monorepo folders for `client` and `server`
+- Frontend routing skeleton
+- Investment dashboard layout shell
+- Express app entrypoint
+- Health check API at `GET /api/health`
+- SQLite connection module
 
-## How to run it
-1. `Use Node 20+ and npm 10+` (`nvm use` will pick up `.nvmrc` if you use `nvm`).
-2. `npm install`
-3. `npm run dev`
-4. Open `http://localhost:5173`
+## Project Structure
+```text
+.
+├── client
+│   ├── src
+│   │   ├── components
+│   │   ├── lib
+│   │   └── pages
+│   ├── package.json
+│   ├── tailwind.config.js
+│   ├── tsconfig.json
+│   └── vite.config.ts
+├── server
+│   ├── src
+│   │   ├── db
+│   │   └── routes
+│   ├── package.json
+│   └── tsconfig.json
+└── package.json
+```
 
-## Notes
-- The current toolchain uses modern syntax and dev tools like Vite 6 and tsx 4, so Node 10 / npm 6 will fail during startup.
-- If you only want one side of the app, use `npm run dev:server` or `npm run dev:client` from the repo root.
+## Requirements
+- Node.js 20+
+- npm 10+
 
-## Assumptions made
-- Latest prices use a static fallback price service so the app remains runnable without external API keys.
-- CSV import expects a simple comma-separated header row matching the exported column names.
+## Install
+```bash
+npm install
+```
+
+## Run In Development
+Start both apps from the repo root:
+```bash
+npm run dev
+```
+
+Start the client only:
+```bash
+npm run dev:client
+```
+
+Start the server only:
+```bash
+npm run dev:server
+```
+
+## Health Check
+After the server starts, visit:
+```text
+http://localhost:4000/api/health
+```
+
+Expected response shape:
+```json
+{
+  "status": "ok",
+  "service": "stock-tracking-server",
+  "database": "connected",
+  "timestamp": "2026-03-20T00:00:00.000Z"
+}
+```

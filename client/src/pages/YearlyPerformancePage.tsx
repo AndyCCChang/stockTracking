@@ -1,20 +1,13 @@
-import { Line, LineChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-
-export function YearlyPerformancePage({ data }: { data: Array<{ year: string; realizedPnL: number }> }) {
+export function YearlyPerformancePage() {
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-      <h2 className="mb-4 text-lg font-semibold">Yearly Realized P&L</h2>
-      <div className="h-80">
-        <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={data}>
-            <CartesianGrid strokeDasharray="3 3" />
-            <XAxis dataKey="year" />
-            <YAxis />
-            <Tooltip />
-            <Line type="monotone" dataKey="realizedPnL" stroke="#60a5fa" strokeWidth={2} />
-          </LineChart>
-        </ResponsiveContainer>
+    <section className="space-y-4">
+      <div>
+        <h2 className="text-2xl font-semibold text-white">Yearly Performance</h2>
+        <p className="mt-2 text-sm text-slate-400">Year-over-year return trends and annual snapshots will be implemented in the next phase.</p>
       </div>
-    </div>
+      <div className="rounded-2xl border border-dashed border-white/15 bg-white/5 p-6 text-sm text-slate-300">
+        Placeholder for annual performance chart, return table, and drawdown summary.
+      </div>
+    </section>
   );
 }
