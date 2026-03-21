@@ -7,10 +7,14 @@
     "dev": "tsx watch src/index.ts",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/index.js",
-    "lint": "tsc --noEmit -p tsconfig.json"
+    "lint": "tsc --noEmit -p tsconfig.json",
+    "db:init": "tsx src/scripts/initDb.ts",
+    "db:seed": "tsx src/scripts/seedTrades.ts",
+    "test": "node --import tsx --test src/lib/fifo.test.ts src/routes/analytics.test.ts"
   },
   "dependencies": {
     "better-sqlite3": "^11.10.0",
+    "dayjs": "^1.11.13",
     "express": "^4.21.2"
   },
   "devDependencies": {
