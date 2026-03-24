@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import dayjs from 'dayjs';
 import {
   CartesianGrid,
@@ -9,41 +9,75 @@ import {
   XAxis,
   YAxis
 } from 'recharts';
-import { fetchHealth, type HealthResponse } from '../lib/api';
+import { fetchDashboard, fetchHealth, type DashboardResponse, type HealthResponse } from '../lib/api';
 
-const mockPerformance = [
-  { month: 'Jan', value: 102000 },
-  { month: 'Feb', value: 104600 },
-  { month: 'Mar', value: 103800 },
-  { month: 'Apr', value: 108400 },
-  { month: 'May', value: 111200 },
-  { month: 'Jun', value: 114500 }
-];
+function formatCurrency(value: number, currency = 'USD') {
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency,
+    maximumFractionDigits: 2
+  }).format(value);
+}
 
-const summaryCards = [
-  { label: 'Total Capital', value: '$114,500', tone: 'text-white' },
-  { label: 'Open Positions', value: '8', tone: 'text-emerald-300' },
-  { label: 'Win Rate', value: '61.2%', tone: 'text-sky-300' },
-  { label: 'Realized PnL', value: '+$9,840', tone: 'text-amber-300' }
-];
+function formatPercent(value: number) {
+  return `${(value * 100).toFixed(2)}%`;
+}
+
+const emptyDashboard: DashboardResponse = {
+  totalCostBasis: 0,
+  totalMarketValue: 0,
+  totalRealizedPnL: 0,
+  totalUnrealizedPnL: 0,
+  totalReturnRate: 0,
+  currentYearRealizedPnL: 0,
+  currentYearUnrealizedPnL: 0,
+  openPositionCount: 0,
+  cumulativePnLSeries: [],
+  unrealizedDistribution: [],
+  yearlyOverview: []
+};
 
 export function DashboardPage() {
   const [health, setHealth] = useState<HealthResponse | null>(null);
+  const [dashboard, setDashboard] = useState<DashboardResponse>(emptyDashboard);
   const [error, setError] = useState<string | null>(null);
+  const [dashboardError, setDashboardError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    async function loadHealth() {
+    async function loadData() {
       try {
-        const response = await fetchHealth();
-        setHealth(response);
+        setLoading(true);
+        const [healthResponse, dashboardResponse] = await Promise.all([fetchHealth(), fetchDashboard()]);
+        setHealth(healthResponse);
+        setDashboard(dashboardResponse);
         setError(null);
+        setDashboardError(null);
       } catch (loadError) {
-        setError(loadError instanceof Error ? loadError.message : 'Unable to reach API');
+        const message = loadError instanceof Error ? loadError.message : 'Unable to reach API';
+        setError(message);
+        setDashboardError(message);
+      } finally {
+        setLoading(false);
       }
     }
 
-    void loadHealth();
+    void loadData();
   }, []);
+
+  const summaryCards = useMemo(
+    () => [
+      { label: 'Market Value', value: formatCurrency(dashboard.totalMarketValue), tone: 'text-white' },
+      { label: 'Open Positions', value: String(dashboard.openPositionCount), tone: 'text-emerald-300' },
+      { label: 'Total Return', value: formatPercent(dashboard.totalReturnRate), tone: 'text-sky-300' },
+      {
+        label: 'Realized PnL',
+        value: formatCurrency(dashboard.totalRealizedPnL),
+        tone: dashboard.totalRealizedPnL >= 0 ? 'text-amber-300' : 'text-rose-300'
+      }
+    ],
+    [dashboard]
+  );
 
   return (
     <div className="space-y-6">
@@ -56,34 +90,68 @@ export function DashboardPage() {
         ))}
       </section>
 
+      {dashboardError ? (
+        <div className="rounded-2xl border border-rose-400/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">{dashboardError}</div>
+      ) : null}
+
       <section className="grid gap-6 xl:grid-cols-[minmax(0,1.35fr)_minmax(320px,0.9fr)]">
         <article className="rounded-2xl border border-white/10 bg-white/5 p-5">
           <div className="mb-5 flex items-center justify-between">
             <div>
-              <h2 className="text-lg font-semibold text-white">Portfolio Curve</h2>
-              <p className="text-sm text-slate-400">Mock data for the phase-1 dashboard shell.</p>
+              <h2 className="text-lg font-semibold text-white">Cumulative PnL</h2>
+              <p className="text-sm text-slate-400">Realized PnL progression based on persisted sell-to-buy allocations.</p>
             </div>
             <span className="rounded-full bg-emerald-400/10 px-3 py-1 text-xs font-medium text-emerald-300">
               {dayjs().format('MMM D, YYYY')}
             </span>
           </div>
 
+          <div className="mb-5 grid gap-3 sm:grid-cols-3">
+            <article className="rounded-2xl border border-white/10 bg-slate-950/40 px-4 py-3">
+              <p className="text-xs uppercase tracking-[0.22em] text-slate-500">Cost Basis</p>
+              <p className="mt-2 text-xl font-semibold text-white">{formatCurrency(dashboard.totalCostBasis)}</p>
+            </article>
+            <article className="rounded-2xl border border-white/10 bg-slate-950/40 px-4 py-3">
+              <p className="text-xs uppercase tracking-[0.22em] text-slate-500">Unrealized PnL</p>
+              <p className={`mt-2 text-xl font-semibold ${dashboard.totalUnrealizedPnL >= 0 ? 'text-emerald-300' : 'text-rose-300'}`}>
+                {formatCurrency(dashboard.totalUnrealizedPnL)}
+              </p>
+            </article>
+            <article className="rounded-2xl border border-white/10 bg-slate-950/40 px-4 py-3">
+              <p className="text-xs uppercase tracking-[0.22em] text-slate-500">Current Year Realized</p>
+              <p className={`mt-2 text-xl font-semibold ${dashboard.currentYearRealizedPnL >= 0 ? 'text-emerald-300' : 'text-rose-300'}`}>
+                {formatCurrency(dashboard.currentYearRealizedPnL)}
+              </p>
+            </article>
+          </div>
+
           <div className="h-72">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={mockPerformance}>
-                <CartesianGrid stroke="rgba(148, 163, 184, 0.15)" vertical={false} />
-                <XAxis dataKey="month" stroke="#94a3b8" tickLine={false} axisLine={false} />
-                <YAxis stroke="#94a3b8" tickLine={false} axisLine={false} width={72} />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: '#020617',
-                    border: '1px solid rgba(148, 163, 184, 0.2)',
-                    borderRadius: '16px'
-                  }}
-                />
-                <Line type="monotone" dataKey="value" stroke="#34d399" strokeWidth={3} dot={false} />
-              </LineChart>
-            </ResponsiveContainer>
+            {loading ? (
+              <div className="flex h-full items-center justify-center rounded-2xl border border-white/10 bg-slate-950/40 text-sm text-slate-400">
+                Loading dashboard analytics...
+              </div>
+            ) : dashboard.cumulativePnLSeries.length === 0 ? (
+              <div className="flex h-full items-center justify-center rounded-2xl border border-white/10 bg-slate-950/40 text-sm text-slate-400">
+                No realized PnL history yet.
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={dashboard.cumulativePnLSeries}>
+                  <CartesianGrid stroke="rgba(148, 163, 184, 0.15)" vertical={false} />
+                  <XAxis dataKey="label" stroke="#94a3b8" tickLine={false} axisLine={false} minTickGap={24} />
+                  <YAxis stroke="#94a3b8" tickLine={false} axisLine={false} width={72} />
+                  <Tooltip
+                    formatter={(value: number) => formatCurrency(value)}
+                    contentStyle={{
+                      backgroundColor: '#020617',
+                      border: '1px solid rgba(148, 163, 184, 0.2)',
+                      borderRadius: '16px'
+                    }}
+                  />
+                  <Line type="monotone" dataKey="value" stroke="#34d399" strokeWidth={3} dot={false} />
+                </LineChart>
+              </ResponsiveContainer>
+            )}
           </div>
         </article>
 
@@ -103,6 +171,21 @@ export function DashboardPage() {
               <p className="mt-2 text-sm text-slate-400">
                 {health ? `Last checked ${dayjs(health.timestamp).format('YYYY-MM-DD HH:mm:ss')}` : 'Waiting for backend response'}
               </p>
+            </div>
+            <div className="rounded-2xl border border-white/10 bg-slate-950/60 p-4">
+              <p className="text-xs uppercase tracking-[0.25em] text-slate-500">Unrealized Leaders</p>
+              {dashboard.unrealizedDistribution.length === 0 ? (
+                <p className="mt-3 text-sm text-slate-400">No open positions yet.</p>
+              ) : (
+                <div className="mt-3 space-y-2">
+                  {dashboard.unrealizedDistribution.slice(0, 4).map((item) => (
+                    <div key={item.ticker} className="flex items-center justify-between text-sm text-slate-300">
+                      <span className="font-medium text-white">{item.ticker}</span>
+                      <span className={item.value >= 0 ? 'text-emerald-300' : 'text-rose-300'}>{formatCurrency(item.value)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         </article>

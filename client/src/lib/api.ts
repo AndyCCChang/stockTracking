@@ -122,6 +122,81 @@ export type RealizedTradeItem = {
   currency: string;
 };
 
+export type PositionItem = {
+  ticker: string;
+  quantity: number;
+  averageCost: number;
+  latestPrice: number;
+  costBasis: number;
+  marketValue: number;
+  unrealizedPnL: number;
+  unrealizedReturnRate: number;
+  openLotsCount: number;
+  currency: string;
+};
+
+export type TimeSeriesPoint = {
+  label: string;
+  value: number;
+};
+
+export type DistributionPoint = {
+  ticker: string;
+  value: number;
+};
+
+export type YearlyOverviewItem = {
+  year: string;
+  realizedPnL: number;
+  unrealizedPnL: number;
+  tradeCount: number;
+  grossBuyAmount: number;
+  grossSellAmount: number;
+  returnRate: number;
+};
+
+export type DashboardResponse = {
+  totalCostBasis: number;
+  totalMarketValue: number;
+  totalRealizedPnL: number;
+  totalUnrealizedPnL: number;
+  totalReturnRate: number;
+  currentYearRealizedPnL: number;
+  currentYearUnrealizedPnL: number;
+  openPositionCount: number;
+  cumulativePnLSeries: TimeSeriesPoint[];
+  unrealizedDistribution: DistributionPoint[];
+  yearlyOverview: YearlyOverviewItem[];
+};
+
+export type PerformanceResponse = {
+  winRate: number;
+  totalClosedTrades: number;
+  winningTrades: number;
+  losingTrades: number;
+  averageWin: number;
+  averageLoss: number;
+  maxWin: number;
+  maxLoss: number;
+  profitFactor: number;
+  cumulativePnLCurve: TimeSeriesPoint[];
+};
+
+export type MonthlySummaryItem = {
+  month: string;
+  realizedPnL: number;
+  unrealizedPnL: number;
+  tradeCount: number;
+  buyAmount: number;
+  sellAmount: number;
+  returnRate: number;
+};
+
+export type MonthlySummaryResponse = {
+  year: string;
+  months: MonthlySummaryItem[];
+};
+
 const api = axios.create({
   baseURL: '/api',
   timeout: 5000
@@ -153,6 +228,15 @@ export function getYearlySummaryExportUrl() {
 export async function fetchHealth() {
   const { data } = await api.get<HealthResponse>('/health');
   return data;
+}
+
+export async function fetchDashboard() {
+  try {
+    const { data } = await api.get<DashboardResponse>('/dashboard');
+    return data;
+  } catch (error) {
+    throw new Error(normalizeErrorMessage(error));
+  }
 }
 
 export async function fetchTrades() {
@@ -213,6 +297,44 @@ export async function fetchAvailableLots(ticker: string, tradeDate: string) {
         ticker,
         tradeDate
       }
+    });
+    return data;
+  } catch (error) {
+    throw new Error(normalizeErrorMessage(error));
+  }
+}
+
+export async function fetchPositions() {
+  try {
+    const { data } = await api.get<PositionItem[]>('/positions');
+    return data;
+  } catch (error) {
+    throw new Error(normalizeErrorMessage(error));
+  }
+}
+
+export async function fetchPerformance() {
+  try {
+    const { data } = await api.get<PerformanceResponse>('/performance');
+    return data;
+  } catch (error) {
+    throw new Error(normalizeErrorMessage(error));
+  }
+}
+
+export async function fetchYearlySummary() {
+  try {
+    const { data } = await api.get<YearlyOverviewItem[]>('/yearly-summary');
+    return data;
+  } catch (error) {
+    throw new Error(normalizeErrorMessage(error));
+  }
+}
+
+export async function fetchMonthlySummary(year: string) {
+  try {
+    const { data } = await api.get<MonthlySummaryResponse>('/monthly-summary', {
+      params: { year }
     });
     return data;
   } catch (error) {

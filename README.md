@@ -86,6 +86,18 @@ Run the server tests:
 npm run test:server
 ```
 
+Run full validation:
+```bash
+npm --prefix server run lint
+npm --prefix client run lint
+npm run build
+```
+
+Latest QA report:
+```text
+TEST_REPORT.md
+```
+
 ## FIFO And Specific Lot Rules
 - `FIFO` is an auto-allocation strategy only.
 - All realized PnL calculations come from persisted `trade_lot_allocations`.
