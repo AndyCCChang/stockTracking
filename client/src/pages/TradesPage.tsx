@@ -704,11 +704,11 @@ export function TradesPage() {
                             {row.status === 'ready' ? 'Ready' : 'Error'}
                           </span>
                         </td>
-                        <td className="px-4 py-3">{row.parsed?.ticker ?? getCsvField(row.source, 'ticker') || 'N/A'}</td>
-                        <td className="px-4 py-3">{row.parsed?.tradeDate ?? getCsvField(row.source, 'tradeDate') || 'N/A'}</td>
-                        <td className="px-4 py-3">{row.parsed?.type ?? getCsvField(row.source, 'type') || 'N/A'}</td>
-                        <td className="px-4 py-3">{row.parsed?.lotSelectionMethod ?? getCsvField(row.source, 'lotSelectionMethod') || 'FIFO'}</td>
-                        <td className="px-4 py-3">{row.parsed?.quantity?.toFixed(2) ?? getCsvField(row.source, 'quantity') || 'N/A'}</td>
+                        <td className="px-4 py-3">{(row.parsed?.ticker ?? getCsvField(row.source, 'ticker')) || 'N/A'}</td>
+                        <td className="px-4 py-3">{(row.parsed?.tradeDate ?? getCsvField(row.source, 'tradeDate')) || 'N/A'}</td>
+                        <td className="px-4 py-3">{(row.parsed?.type ?? getCsvField(row.source, 'type')) || 'N/A'}</td>
+                        <td className="px-4 py-3">{(row.parsed?.lotSelectionMethod ?? getCsvField(row.source, 'lotSelectionMethod')) || 'FIFO'}</td>
+                        <td className="px-4 py-3">{(row.parsed?.quantity?.toFixed(2) ?? getCsvField(row.source, 'quantity')) || 'N/A'}</td>
                         <td className="max-w-[280px] px-4 py-3 text-slate-400">{row.error ?? 'Ready to import'}</td>
                       </tr>
                     ))
@@ -827,7 +827,7 @@ export function TradesPage() {
               <p className="mt-1 text-sm text-slate-400">SELL orders can use FIFO auto allocation or Specific Lot selection with live allocation previews.</p>
             </div>
             {editingTrade ? (
-              <button type="button" onClick={resetForm} className="rounded-full border border-white/10 px-3 py-1.5 text-xs font-medium text-slate-300 transition hover:text-white">Cancel Edit</button>
+              <button type="button" onClick={() => resetForm()} className="rounded-full border border-white/10 px-3 py-1.5 text-xs font-medium text-slate-300 transition hover:text-white">Cancel Edit</button>
             ) : null}
           </div>
 
