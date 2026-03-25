@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts';
 import {
   deleteTrade,
   fetchPositions,
@@ -49,7 +50,15 @@ type SortState = {
   direction: SortDirection;
 };
 
+type CompositionItem = {
+  ticker: string;
+  value: number;
+  currency: string;
+  share: number;
+};
+
 const QUANTITY_EPSILON = 0.000001;
+const PIE_COLORS = ['#34d399', '#38bdf8', '#f59e0b', '#f87171', '#a78bfa', '#facc15', '#fb7185', '#22c55e'];
 
 function formatCurrency(value: number | null, currency = 'USD') {
   if (value == null) {
@@ -145,6 +154,28 @@ function createLotFormState(lot: EditableLot): LotFormState {
   };
 }
 
+
+function CompositionTooltip({
+  active,
+  payload
+}: {
+  active?: boolean;
+  payload?: Array<{ payload?: CompositionItem }>;
+}) {
+  const item = payload?.[0]?.payload;
+  if (!active || !item) {
+    return null;
+  }
+
+  return (
+    <div className="rounded-2xl border border-white/10 bg-slate-950/95 px-4 py-3 shadow-2xl">
+      <p className="text-sm font-semibold text-white">{item.ticker}</p>
+      <p className="mt-2 text-sm text-slate-300">{formatCurrency(item.value, item.currency)}</p>
+      <p className="mt-1 text-xs uppercase tracking-[0.18em] text-slate-500">{formatPercent(item.share)}</p>
+    </div>
+  );
+}
+
 export function PositionsPage() {
   const [items, setItems] = useState<PositionItem[]>([]);
   const [trades, setTrades] = useState<TradeRecord[]>([]);
@@ -208,6 +239,29 @@ export function PositionsPage() {
       totalReturnRate: totalUnrealizedPnL == null ? null : totalCostBasis === 0 ? 0 : totalUnrealizedPnL / totalCostBasis
     };
   }, [items]);
+
+
+  const compositionData = useMemo(() => {
+    const base = items
+      .filter((item) => item.marketValue != null && item.marketValue > 0)
+      .map((item) => ({
+        ticker: item.ticker,
+        value: item.marketValue ?? 0,
+        currency: item.currency
+      }));
+
+    const total = base.reduce((sum, item) => sum + item.value, 0);
+
+    return base.map((item) => ({
+      ...item,
+      share: total === 0 ? 0 : item.value / total
+    })) satisfies CompositionItem[];
+  }, [items]);
+
+  const hasIncompleteComposition = useMemo(
+    () => items.some((item) => item.marketValue == null),
+    [items]
+  );
 
 
   const sortedItems = useMemo(() => {
@@ -440,6 +494,80 @@ export function PositionsPage() {
           </p>
         </article>
       </div>
+
+      <section className="grid gap-6 xl:grid-cols-[minmax(0,1.1fr)_minmax(280px,0.9fr)]">
+        <article className="rounded-3xl border border-white/10 bg-white/5 p-5">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <h3 className="text-lg font-semibold text-white">Current Composition</h3>
+              <p className="mt-1 text-sm text-slate-400">Current stock mix by market value.</p>
+            </div>
+            <div className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-300">
+              {compositionData.length} ticker{compositionData.length === 1 ? '' : 's'}
+            </div>
+          </div>
+
+          {hasIncompleteComposition ? (
+            <div className="mt-4 rounded-2xl border border-amber-400/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
+              Some tickers are missing current prices, so the pie chart only includes positions with available market values.
+            </div>
+          ) : null}
+
+          <div className="mt-5 h-80">
+            {loading ? (
+              <div className="flex h-full items-center justify-center rounded-2xl border border-white/10 bg-slate-950/40 text-sm text-slate-400">
+                Loading composition...
+              </div>
+            ) : compositionData.length === 0 ? (
+              <div className="flex h-full items-center justify-center rounded-2xl border border-white/10 bg-slate-950/40 text-sm text-slate-400">
+                No market-value composition available yet.
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={compositionData}
+                    dataKey="value"
+                    nameKey="ticker"
+                    innerRadius={70}
+                    outerRadius={110}
+                    paddingAngle={3}
+                  >
+                    {compositionData.map((entry, index) => (
+                      <Cell key={entry.ticker} fill={PIE_COLORS[index % PIE_COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip content={<CompositionTooltip />} cursor={false} />
+                </PieChart>
+              </ResponsiveContainer>
+            )}
+          </div>
+        </article>
+
+        <article className="rounded-3xl border border-white/10 bg-white/5 p-5">
+          <h3 className="text-lg font-semibold text-white">Allocation Breakdown</h3>
+          <p className="mt-1 text-sm text-slate-400">Each slice shows its share of the current market value.</p>
+
+          <div className="mt-5 space-y-3">
+            {compositionData.length === 0 ? (
+              <p className="text-sm text-slate-400">No composition data to display.</p>
+            ) : compositionData.map((item, index) => {
+              return (
+                <div key={item.ticker} className="rounded-2xl border border-white/10 bg-slate-950/40 px-4 py-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      <span className="h-3 w-3 rounded-full" style={{ backgroundColor: PIE_COLORS[index % PIE_COLORS.length] }} />
+                      <span className="font-medium text-white">{item.ticker}</span>
+                    </div>
+                    <span className="text-sm text-slate-300">{formatCurrency(item.value, item.currency)}</span>
+                  </div>
+                  <p className="mt-2 text-xs uppercase tracking-[0.18em] text-slate-500">{formatPercent(item.share)}</p>
+                </div>
+              );
+            })}
+          </div>
+        </article>
+      </section>
 
       <div className="rounded-3xl border border-white/10 bg-white/5">
         <div className="overflow-x-auto">
