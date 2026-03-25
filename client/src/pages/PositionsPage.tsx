@@ -58,6 +58,7 @@ type CompositionItem = {
 };
 
 const QUANTITY_EPSILON = 0.000001;
+const PRICE_REFRESH_INTERVAL_MS = 120_000;
 const PIE_COLORS = ['#34d399', '#38bdf8', '#f59e0b', '#f87171', '#a78bfa', '#facc15', '#fb7185', '#22c55e'];
 
 function formatCurrency(value: number | null, currency = 'USD') {
@@ -190,6 +191,24 @@ export function PositionsPage() {
   const [deletingLotId, setDeletingLotId] = useState<number | null>(null);
   const [sort, setSort] = useState<SortState>({ key: 'ticker', direction: 'asc' });
 
+  async function refreshPositions(options?: { silent?: boolean }) {
+    try {
+      if (!options?.silent) {
+        setLoading(true);
+      }
+
+      const response = await fetchPositions();
+      setItems(response);
+      setError(null);
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : 'Failed to refresh positions');
+    } finally {
+      if (!options?.silent) {
+        setLoading(false);
+      }
+    }
+  }
+
   async function loadData() {
     try {
       setLoading(true);
@@ -206,6 +225,14 @@ export function PositionsPage() {
 
   useEffect(() => {
     void loadData();
+  }, []);
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      void refreshPositions({ silent: true });
+    }, PRICE_REFRESH_INTERVAL_MS);
+
+    return () => window.clearInterval(intervalId);
   }, []);
 
   const editableLots = useMemo(() => buildEditableLots(trades), [trades]);
