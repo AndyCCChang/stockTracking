@@ -177,12 +177,26 @@ Current file:
 - `server/src/services/priceService.ts`
 
 Current behavior:
-- `getLatestPrice(ticker)` uses a mock in-memory price map
+- The service supports `mock`, `finnhub`, and `alphavantage` providers.
+- If no API key is configured, it safely falls back to the in-memory mock price map.
 
-To replace it with a real market data provider:
-1. Keep the `PriceProviderAdapter` shape.
-2. Replace `MockPriceService` with a provider client.
-3. Keep the exported `getLatestPrice(ticker)` function stable so analytics code does not change.
+Environment configuration:
+```bash
+PRICE_PROVIDER=auto
+FINNHUB_API_KEY=your_key_here
+ALPHA_VANTAGE_API_KEY=your_key_here
+```
+
+Provider selection rules:
+1. `PRICE_PROVIDER=auto` prefers Finnhub when `FINNHUB_API_KEY` is set.
+2. Otherwise `auto` falls back to Alpha Vantage when `ALPHA_VANTAGE_API_KEY` is set.
+3. If neither key is present, the app uses the mock provider so local development still works.
+
+Current price endpoint:
+- `GET /api/prices/latest?ticker=AAPL`
+
+Example env file:
+- `.env.example`
 
 ## Backend API Overview
 Health:
@@ -207,6 +221,9 @@ Analytics:
 - `GET /api/yearly-summary`
 - `GET /api/yearly-summary/export`
 - `GET /api/monthly-summary?year=2026`
+
+Prices:
+- `GET /api/prices/latest?ticker=AAPL`
 
 ## Notes
 - The frontend trade import/export controls live on the `Trades` page.

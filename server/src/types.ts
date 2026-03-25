@@ -160,23 +160,23 @@ export type RealizedPnLResult = {
 export type UnrealizedSummary = {
   ticker: string;
   quantity: number;
-  marketPrice: number;
+  marketPrice: number | null;
   averageCost: number;
-  marketValue: number;
+  marketValue: number | null;
   costBasis: number;
-  unrealizedPnL: number;
-  unrealizedReturnRate: number;
+  unrealizedPnL: number | null;
+  unrealizedReturnRate: number | null;
   currency: string;
 };
 
 export type YearlySummary = {
   year: string;
   realizedPnL: number;
-  unrealizedPnL: number;
+  unrealizedPnL: number | null;
   tradeCount: number;
   grossBuyAmount: number;
   grossSellAmount: number;
-  returnRate: number;
+  returnRate: number | null;
 };
 
 export type TimeSeriesPoint = {
@@ -204,12 +204,12 @@ export type DistributionPoint = {
 
 export type DashboardResponse = {
   totalCostBasis: number;
-  totalMarketValue: number;
+  totalMarketValue: number | null;
   totalRealizedPnL: number;
-  totalUnrealizedPnL: number;
-  totalReturnRate: number;
+  totalUnrealizedPnL: number | null;
+  totalReturnRate: number | null;
   currentYearRealizedPnL: number;
-  currentYearUnrealizedPnL: number;
+  currentYearUnrealizedPnL: number | null;
   openPositionCount: number;
   cumulativePnLSeries: TimeSeriesPoint[];
   unrealizedDistribution: DistributionPoint[];
@@ -220,11 +220,11 @@ export type PositionApiItem = {
   ticker: string;
   quantity: number;
   averageCost: number;
-  latestPrice: number;
+  latestPrice: number | null;
   costBasis: number;
-  marketValue: number;
-  unrealizedPnL: number;
-  unrealizedReturnRate: number;
+  marketValue: number | null;
+  unrealizedPnL: number | null;
+  unrealizedReturnRate: number | null;
   openLotsCount: number;
   currency: string;
 };
@@ -255,11 +255,11 @@ export type RealizedApiItem = {
 export type MonthlySummaryItem = {
   month: string;
   realizedPnL: number;
-  unrealizedPnL: number;
+  unrealizedPnL: number | null;
   tradeCount: number;
   buyAmount: number;
   sellAmount: number;
-  returnRate: number;
+  returnRate: number | null;
 };
 
 export type MonthlySummaryResponse = {

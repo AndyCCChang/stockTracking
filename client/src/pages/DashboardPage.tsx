@@ -11,7 +11,11 @@ import {
 } from 'recharts';
 import { fetchDashboard, fetchHealth, type DashboardResponse, type HealthResponse } from '../lib/api';
 
-function formatCurrency(value: number, currency = 'USD') {
+function formatCurrency(value: number | null, currency = 'USD') {
+  if (value == null) {
+    return 'N/A';
+  }
+
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency,
@@ -19,8 +23,20 @@ function formatCurrency(value: number, currency = 'USD') {
   }).format(value);
 }
 
-function formatPercent(value: number) {
+function formatPercent(value: number | null) {
+  if (value == null) {
+    return 'N/A';
+  }
+
   return `${(value * 100).toFixed(2)}%`;
+}
+
+function getTone(value: number | null, positive = 'text-emerald-300', negative = 'text-rose-300') {
+  if (value == null) {
+    return 'text-slate-400';
+  }
+
+  return value >= 0 ? positive : negative;
 }
 
 const emptyDashboard: DashboardResponse = {
@@ -65,11 +81,20 @@ export function DashboardPage() {
     void loadData();
   }, []);
 
+  const hasUnavailablePrices = useMemo(
+    () =>
+      dashboard.totalMarketValue == null ||
+      dashboard.totalUnrealizedPnL == null ||
+      dashboard.currentYearUnrealizedPnL == null ||
+      dashboard.yearlyOverview.some((item) => item.unrealizedPnL == null),
+    [dashboard]
+  );
+
   const summaryCards = useMemo(
     () => [
       { label: 'Market Value', value: formatCurrency(dashboard.totalMarketValue), tone: 'text-white' },
       { label: 'Open Positions', value: String(dashboard.openPositionCount), tone: 'text-emerald-300' },
-      { label: 'Total Return', value: formatPercent(dashboard.totalReturnRate), tone: 'text-sky-300' },
+      { label: 'Total Return', value: formatPercent(dashboard.totalReturnRate), tone: getTone(dashboard.totalReturnRate, 'text-sky-300') },
       {
         label: 'Realized PnL',
         value: formatCurrency(dashboard.totalRealizedPnL),
@@ -94,6 +119,12 @@ export function DashboardPage() {
         <div className="rounded-2xl border border-rose-400/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">{dashboardError}</div>
       ) : null}
 
+      {!dashboardError && hasUnavailablePrices ? (
+        <div className="rounded-2xl border border-amber-400/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
+          Some live prices are temporarily unavailable, so market-value-based fields may show N/A.
+        </div>
+      ) : null}
+
       <section className="grid gap-6 xl:grid-cols-[minmax(0,1.35fr)_minmax(320px,0.9fr)]">
         <article className="rounded-2xl border border-white/10 bg-white/5 p-5">
           <div className="mb-5 flex items-center justify-between">
@@ -113,7 +144,7 @@ export function DashboardPage() {
             </article>
             <article className="rounded-2xl border border-white/10 bg-slate-950/40 px-4 py-3">
               <p className="text-xs uppercase tracking-[0.22em] text-slate-500">Unrealized PnL</p>
-              <p className={`mt-2 text-xl font-semibold ${dashboard.totalUnrealizedPnL >= 0 ? 'text-emerald-300' : 'text-rose-300'}`}>
+              <p className={`mt-2 text-xl font-semibold ${getTone(dashboard.totalUnrealizedPnL)}`}>
                 {formatCurrency(dashboard.totalUnrealizedPnL)}
               </p>
             </article>

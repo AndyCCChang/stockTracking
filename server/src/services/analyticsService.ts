@@ -28,6 +28,24 @@ function round(value: number) {
   return Number(value.toFixed(2));
 }
 
+function roundNullable(value: number | null) {
+  return value == null ? null : round(value);
+}
+
+function sumNullable(values: Array<number | null>) {
+  let sum = 0;
+
+  for (const value of values) {
+    if (value == null) {
+      return null;
+    }
+
+    sum += value;
+  }
+
+  return sum;
+}
+
 function getDataset() {
   return {
     trades: getAllTrades(),
@@ -40,11 +58,11 @@ function toPositionApiItem(item: UnrealizedSummary, openLotsCount: number): Posi
     ticker: item.ticker,
     quantity: round(item.quantity),
     averageCost: round(item.averageCost),
-    latestPrice: round(item.marketPrice),
+    latestPrice: roundNullable(item.marketPrice),
     costBasis: round(item.costBasis),
-    marketValue: round(item.marketValue),
-    unrealizedPnL: round(item.unrealizedPnL),
-    unrealizedReturnRate: round(item.unrealizedReturnRate),
+    marketValue: roundNullable(item.marketValue),
+    unrealizedPnL: roundNullable(item.unrealizedPnL),
+    unrealizedReturnRate: roundNullable(item.unrealizedReturnRate),
     openLotsCount,
     currency: item.currency
   };
@@ -126,16 +144,18 @@ function buildYearlyOverview(
   return calculateYearlySummary(trades, allocations, unrealizedItems).map((item) => ({
     year: item.year,
     realizedPnL: round(item.realizedPnL),
-    unrealizedPnL: round(item.unrealizedPnL),
+    unrealizedPnL: roundNullable(item.unrealizedPnL),
     tradeCount: item.tradeCount,
     grossBuyAmount: round(item.grossBuyAmount),
     grossSellAmount: round(item.grossSellAmount),
-    returnRate: round(item.returnRate)
+    returnRate: roundNullable(item.returnRate)
   }));
 }
 
 function buildUnrealizedDistribution(items: UnrealizedSummary[]): DistributionPoint[] {
-  return items.map((item) => ({ ticker: item.ticker, value: round(item.unrealizedPnL) }));
+  return items
+    .filter((item) => item.unrealizedPnL != null)
+    .map((item) => ({ ticker: item.ticker, value: round(item.unrealizedPnL ?? 0) }));
 }
 
 function createEmptyDashboard(): DashboardResponse {
@@ -164,20 +184,22 @@ export async function getDashboardAnalytics(): Promise<DashboardResponse> {
   const unrealized = await calculateUnrealizedPnL(trades, allocations, getLatestPrice);
   const yearlyOverview = buildYearlyOverview(trades, allocations, unrealized);
   const totalCostBasis = unrealized.reduce((sum, item) => sum + item.costBasis, 0);
-  const totalMarketValue = unrealized.reduce((sum, item) => sum + item.marketValue, 0);
-  const totalUnrealizedPnL = unrealized.reduce((sum, item) => sum + item.unrealizedPnL, 0);
+  const totalMarketValue = sumNullable(unrealized.map((item) => item.marketValue));
+  const totalUnrealizedPnL = sumNullable(unrealized.map((item) => item.unrealizedPnL));
   const currentYear = dayjs().format('YYYY');
-  const currentYearRealizedPnL = yearlyOverview.find((item) => item.year === currentYear)?.realizedPnL ?? 0;
-  const currentYearUnrealizedPnL = yearlyOverview.find((item) => item.year === currentYear)?.unrealizedPnL ?? 0;
+  const currentYearItem = yearlyOverview.find((item) => item.year === currentYear);
+  const currentYearRealizedPnL = currentYearItem?.realizedPnL ?? 0;
+  const currentYearUnrealizedPnL = currentYearItem ? currentYearItem.unrealizedPnL : 0;
 
   return {
     totalCostBasis: round(totalCostBasis),
-    totalMarketValue: round(totalMarketValue),
+    totalMarketValue: roundNullable(totalMarketValue),
     totalRealizedPnL: round(realized.totalRealizedPnL),
-    totalUnrealizedPnL: round(totalUnrealizedPnL),
-    totalReturnRate: totalCostBasis === 0 ? 0 : round((realized.totalRealizedPnL + totalUnrealizedPnL) / totalCostBasis),
+    totalUnrealizedPnL: roundNullable(totalUnrealizedPnL),
+    totalReturnRate:
+      totalUnrealizedPnL == null ? null : totalCostBasis === 0 ? 0 : round((realized.totalRealizedPnL + totalUnrealizedPnL) / totalCostBasis),
     currentYearRealizedPnL,
-    currentYearUnrealizedPnL,
+    currentYearUnrealizedPnL: roundNullable(currentYearUnrealizedPnL),
     openPositionCount: calculateOpenPositionsFromLots(trades, allocations).length,
     cumulativePnLSeries: buildCumulativePnLSeries(realized.matches).map((point) => ({
       label: point.label,
@@ -258,7 +280,7 @@ export async function getMonthlySummaryAnalytics(year: string): Promise<MonthlyS
   const unrealized = await calculateUnrealizedPnL(trades, allocations, getLatestPrice);
   const currentYear = dayjs().format('YYYY');
   const currentMonth = dayjs().format('MM');
-  const currentYearUnrealized = unrealized.reduce((sum, item) => sum + item.unrealizedPnL, 0);
+  const currentYearUnrealized = sumNullable(unrealized.map((item) => item.unrealizedPnL));
 
   const months = Array.from({ length: 12 }, (_, index) => {
     const month = String(index + 1).padStart(2, '0');
@@ -273,11 +295,11 @@ export async function getMonthlySummaryAnalytics(year: string): Promise<MonthlyS
     return {
       month,
       realizedPnL: round(realizedPnL),
-      unrealizedPnL: round(unrealizedPnL),
+      unrealizedPnL: roundNullable(unrealizedPnL),
       tradeCount: monthTrades.length,
       buyAmount: round(buyAmount),
       sellAmount: round(sellAmount),
-      returnRate: denominator === 0 ? 0 : round((realizedPnL + unrealizedPnL) / denominator)
+      returnRate: unrealizedPnL == null ? null : denominator === 0 ? 0 : round((realizedPnL + unrealizedPnL) / denominator)
     } satisfies MonthlySummaryItem;
   });
 

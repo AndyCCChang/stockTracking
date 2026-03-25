@@ -16,7 +16,11 @@ import {
   type YearlyOverviewItem
 } from '../lib/api';
 
-function formatCurrency(value: number, currency = 'USD') {
+function formatCurrency(value: number | null, currency = 'USD') {
+  if (value == null) {
+    return 'N/A';
+  }
+
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency,
@@ -24,8 +28,20 @@ function formatCurrency(value: number, currency = 'USD') {
   }).format(value);
 }
 
-function formatPercent(value: number) {
+function formatPercent(value: number | null) {
+  if (value == null) {
+    return 'N/A';
+  }
+
   return `${(value * 100).toFixed(2)}%`;
+}
+
+function getTone(value: number | null, positive = 'text-emerald-300', negative = 'text-rose-300') {
+  if (value == null) {
+    return 'text-slate-400';
+  }
+
+  return value >= 0 ? positive : negative;
 }
 
 const emptyMonthlySummary: MonthlySummaryResponse = {
@@ -85,11 +101,18 @@ export function YearlyPerformancePage() {
     }
 
     void loadMonthlySummary();
-  }, [selectedYear]);
+  }, [selectedYear, yearlyItems]);
 
   const selectedYearSummary = useMemo(
     () => yearlyItems.find((item) => item.year === selectedYear) ?? null,
     [selectedYear, yearlyItems]
+  );
+
+  const hasUnavailablePrices = useMemo(
+    () =>
+      (selectedYearSummary != null && selectedYearSummary.unrealizedPnL == null) ||
+      monthlySummary.months.some((item) => item.unrealizedPnL == null),
+    [monthlySummary.months, selectedYearSummary]
   );
 
   return (
@@ -119,11 +142,17 @@ export function YearlyPerformancePage() {
         <div className="rounded-2xl border border-rose-400/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">{error}</div>
       ) : null}
 
+      {!error && hasUnavailablePrices ? (
+        <div className="rounded-2xl border border-amber-400/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
+          Some current prices are unavailable, so unrealized annual fields may show N/A.
+        </div>
+      ) : null}
+
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <MetricCard label="Realized PnL" value={formatCurrency(selectedYearSummary?.realizedPnL ?? 0)} tone={(selectedYearSummary?.realizedPnL ?? 0) >= 0 ? 'text-emerald-300' : 'text-rose-300'} />
-        <MetricCard label="Unrealized PnL" value={formatCurrency(selectedYearSummary?.unrealizedPnL ?? 0)} tone={(selectedYearSummary?.unrealizedPnL ?? 0) >= 0 ? 'text-emerald-300' : 'text-rose-300'} />
+        <MetricCard label="Unrealized PnL" value={formatCurrency(selectedYearSummary?.unrealizedPnL ?? null)} tone={getTone(selectedYearSummary?.unrealizedPnL ?? null)} />
         <MetricCard label="Trades" value={String(selectedYearSummary?.tradeCount ?? 0)} tone="text-white" />
-        <MetricCard label="Return Rate" value={formatPercent(selectedYearSummary?.returnRate ?? 0)} tone={(selectedYearSummary?.returnRate ?? 0) >= 0 ? 'text-sky-300' : 'text-rose-300'} />
+        <MetricCard label="Return Rate" value={formatPercent(selectedYearSummary?.returnRate ?? null)} tone={getTone(selectedYearSummary?.returnRate ?? null, 'text-sky-300')} />
       </div>
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(320px,0.8fr)]">
@@ -211,8 +240,8 @@ export function YearlyPerformancePage() {
                     <td className="px-4 py-4">{formatCurrency(item.buyAmount)}</td>
                     <td className="px-4 py-4">{formatCurrency(item.sellAmount)}</td>
                     <td className={`px-4 py-4 ${item.realizedPnL >= 0 ? 'text-emerald-300' : 'text-rose-300'}`}>{formatCurrency(item.realizedPnL)}</td>
-                    <td className={`px-4 py-4 ${item.unrealizedPnL >= 0 ? 'text-emerald-300' : 'text-rose-300'}`}>{formatCurrency(item.unrealizedPnL)}</td>
-                    <td className={`px-4 py-4 ${item.returnRate >= 0 ? 'text-sky-300' : 'text-rose-300'}`}>{formatPercent(item.returnRate)}</td>
+                    <td className={`px-4 py-4 ${getTone(item.unrealizedPnL)}`}>{formatCurrency(item.unrealizedPnL)}</td>
+                    <td className={`px-4 py-4 ${getTone(item.returnRate, 'text-sky-300')}`}>{formatPercent(item.returnRate)}</td>
                   </tr>
                 ))
               )}

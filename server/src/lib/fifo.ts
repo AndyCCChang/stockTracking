@@ -15,7 +15,7 @@ import type {
   YearlySummary
 } from '../types.js';
 
-export type PriceProvider = (ticker: string) => number | Promise<number>;
+export type PriceProvider = (ticker: string) => number | null | Promise<number | null>;
 
 type AvailableLotState = AvailableLot;
 
@@ -357,8 +357,8 @@ export async function calculateUnrealizedPnL(
   const result = await Promise.all(
     positions.map(async (position) => {
       const marketPrice = await getPrice(position.ticker);
-      const marketValue = marketPrice * position.quantity;
-      const unrealizedPnL = marketValue - position.totalCost;
+      const marketValue = marketPrice == null ? null : marketPrice * position.quantity;
+      const unrealizedPnL = marketValue == null ? null : marketValue - position.totalCost;
       return {
         ticker: position.ticker,
         quantity: position.quantity,
@@ -367,7 +367,7 @@ export async function calculateUnrealizedPnL(
         marketValue,
         costBasis: position.totalCost,
         unrealizedPnL,
-        unrealizedReturnRate: position.totalCost === 0 ? 0 : unrealizedPnL / position.totalCost,
+        unrealizedReturnRate: unrealizedPnL == null ? null : (position.totalCost === 0 ? 0 : unrealizedPnL / position.totalCost),
         currency: position.currency
       } satisfies UnrealizedSummary;
     })
@@ -427,7 +427,10 @@ export function calculateYearlySummary(
   const currentYear = dayjs().format('YYYY');
   const currentYearSummary = yearlyMap.get(currentYear);
   if (currentYearSummary) {
-    currentYearSummary.unrealizedPnL = unrealizedSummaries.reduce((sum, item) => sum + item.unrealizedPnL, 0);
+    const hasMissingUnrealized = unrealizedSummaries.some((item) => item.unrealizedPnL == null);
+    currentYearSummary.unrealizedPnL = hasMissingUnrealized
+      ? null
+      : unrealizedSummaries.reduce((sum, item) => sum + (item.unrealizedPnL ?? 0), 0);
   }
 
   return [...yearlyMap.values()]
@@ -435,7 +438,12 @@ export function calculateYearlySummary(
       const denominator = item.grossBuyAmount === 0 ? item.grossSellAmount : item.grossBuyAmount;
       return {
         ...item,
-        returnRate: denominator === 0 ? 0 : (item.realizedPnL + item.unrealizedPnL) / denominator
+        returnRate:
+          item.unrealizedPnL == null
+            ? null
+            : denominator === 0
+              ? 0
+              : (item.realizedPnL + item.unrealizedPnL) / denominator
       };
     })
     .sort((left, right) => left.year.localeCompare(right.year));

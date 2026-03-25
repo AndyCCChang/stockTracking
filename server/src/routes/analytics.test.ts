@@ -79,12 +79,12 @@ test('GET /api/dashboard returns stable analytics payload', async () => {
 
   assert.equal(response.status, 200);
   assert.equal(typeof payload.totalCostBasis, 'number');
-  assert.equal(typeof payload.totalMarketValue, 'number');
+  assert.ok(payload.totalMarketValue === null || typeof payload.totalMarketValue === 'number');
   assert.equal(typeof payload.totalRealizedPnL, 'number');
-  assert.equal(typeof payload.totalUnrealizedPnL, 'number');
-  assert.equal(typeof payload.totalReturnRate, 'number');
+  assert.ok(payload.totalUnrealizedPnL === null || typeof payload.totalUnrealizedPnL === 'number');
+  assert.ok(payload.totalReturnRate === null || typeof payload.totalReturnRate === 'number');
   assert.equal(typeof payload.currentYearRealizedPnL, 'number');
-  assert.equal(typeof payload.currentYearUnrealizedPnL, 'number');
+  assert.ok(payload.currentYearUnrealizedPnL === null || typeof payload.currentYearUnrealizedPnL === 'number');
   assert.equal(typeof payload.openPositionCount, 'number');
   assert.ok(Array.isArray(payload.cumulativePnLSeries));
   assert.ok(Array.isArray(payload.unrealizedDistribution));
@@ -133,8 +133,8 @@ test('GET /api/positions reflects remaining open lots after allocations', async 
   assert.equal(aapl.quantity, 9);
   assert.equal(aapl.openLotsCount, 2);
   assert.equal(typeof aapl.costBasis, 'number');
-  assert.equal(typeof aapl.marketValue, 'number');
-  assert.equal(typeof aapl.unrealizedPnL, 'number');
+  assert.ok(aapl.marketValue === null || typeof aapl.marketValue === 'number');
+  assert.ok(aapl.unrealizedPnL === null || typeof aapl.unrealizedPnL === 'number');
 
   server.close();
   await once(server, 'close');

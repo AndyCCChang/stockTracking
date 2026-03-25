@@ -10,6 +10,15 @@ export type HealthResponse = {
   timestamp: string;
 };
 
+export type LatestPriceResponse = {
+  ticker: string;
+  price: number | null;
+  asOf: string;
+  provider: string;
+  source: 'live' | 'cache' | 'unavailable';
+  error: string | null;
+};
+
 export type TradeAllocationRecord = {
   id: number;
   sellTradeId: number;
@@ -126,11 +135,11 @@ export type PositionItem = {
   ticker: string;
   quantity: number;
   averageCost: number;
-  latestPrice: number;
+  latestPrice: number | null;
   costBasis: number;
-  marketValue: number;
-  unrealizedPnL: number;
-  unrealizedReturnRate: number;
+  marketValue: number | null;
+  unrealizedPnL: number | null;
+  unrealizedReturnRate: number | null;
   openLotsCount: number;
   currency: string;
 };
@@ -148,21 +157,21 @@ export type DistributionPoint = {
 export type YearlyOverviewItem = {
   year: string;
   realizedPnL: number;
-  unrealizedPnL: number;
+  unrealizedPnL: number | null;
   tradeCount: number;
   grossBuyAmount: number;
   grossSellAmount: number;
-  returnRate: number;
+  returnRate: number | null;
 };
 
 export type DashboardResponse = {
   totalCostBasis: number;
-  totalMarketValue: number;
+  totalMarketValue: number | null;
   totalRealizedPnL: number;
-  totalUnrealizedPnL: number;
-  totalReturnRate: number;
+  totalUnrealizedPnL: number | null;
+  totalReturnRate: number | null;
   currentYearRealizedPnL: number;
-  currentYearUnrealizedPnL: number;
+  currentYearUnrealizedPnL: number | null;
   openPositionCount: number;
   cumulativePnLSeries: TimeSeriesPoint[];
   unrealizedDistribution: DistributionPoint[];
@@ -185,11 +194,11 @@ export type PerformanceResponse = {
 export type MonthlySummaryItem = {
   month: string;
   realizedPnL: number;
-  unrealizedPnL: number;
+  unrealizedPnL: number | null;
   tradeCount: number;
   buyAmount: number;
   sellAmount: number;
-  returnRate: number;
+  returnRate: number | null;
 };
 
 export type MonthlySummaryResponse = {
@@ -228,6 +237,17 @@ export function getYearlySummaryExportUrl() {
 export async function fetchHealth() {
   const { data } = await api.get<HealthResponse>('/health');
   return data;
+}
+
+export async function fetchLatestPrice(ticker: string) {
+  try {
+    const { data } = await api.get<LatestPriceResponse>('/prices/latest', {
+      params: { ticker }
+    });
+    return data;
+  } catch (error) {
+    throw new Error(normalizeErrorMessage(error));
+  }
 }
 
 export async function fetchDashboard() {

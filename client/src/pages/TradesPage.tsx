@@ -4,6 +4,7 @@ import {
   createTrade,
   deleteTrade,
   fetchAvailableLots,
+  fetchLatestPrice,
   fetchTrades,
   getTradesExportUrl,
   getYearlySummaryExportUrl,
@@ -220,6 +221,9 @@ export function TradesPage() {
   const [csvError, setCsvError] = useState<string | null>(null);
   const [csvMessage, setCsvMessage] = useState<string | null>(null);
   const [isImportingCsv, setIsImportingCsv] = useState(false);
+  const [priceLookupLoading, setPriceLookupLoading] = useState(false);
+  const [priceLookupError, setPriceLookupError] = useState<string | null>(null);
+  const [latestPriceInfo, setLatestPriceInfo] = useState<string | null>(null);
 
   const editingTrade = useMemo(
     () => (editingTradeId == null ? null : trades.find((trade) => trade.id === editingTradeId) ?? null),
@@ -458,6 +462,38 @@ export function TradesPage() {
     }
     setLotsError(null);
     setAvailableLots([]);
+    setPriceLookupError(null);
+    setLatestPriceInfo(null);
+  }
+
+  async function handleLoadLatestPrice() {
+    const ticker = form.ticker.trim().toUpperCase();
+    if (ticker.length === 0) {
+      setPriceLookupError('Enter a ticker before loading the current price.');
+      setLatestPriceInfo(null);
+      return;
+    }
+
+    try {
+      setPriceLookupLoading(true);
+      const response = await fetchLatestPrice(ticker);
+      if (response.price == null) {
+        setPriceLookupError(response.error ?? `Latest price is unavailable for ${response.ticker}.`);
+        setLatestPriceInfo(null);
+        return;
+      }
+
+      updateForm('price', String(response.price));
+      setPriceLookupError(response.error);
+      setLatestPriceInfo(
+        `Loaded ${response.ticker} ${formatCurrency(response.price, form.currency || 'USD')} from ${response.provider} (${response.source}).`
+      );
+    } catch (error) {
+      setPriceLookupError(error instanceof Error ? error.message : 'Unable to load current price');
+      setLatestPriceInfo(null);
+    } finally {
+      setPriceLookupLoading(false);
+    }
   }
 
   function resetCsvImport() {
@@ -488,6 +524,8 @@ export function TradesPage() {
     });
     setFormError(null);
     setFormMessage(null);
+    setPriceLookupError(null);
+    setLatestPriceInfo(null);
   }
 
   async function handleDelete(id: number) {
@@ -843,7 +881,7 @@ export function TradesPage() {
             <div className="grid gap-4 md:grid-cols-2">
               <label className="space-y-2 text-sm text-slate-300">
                 <span>Ticker</span>
-                <input value={form.ticker} onChange={(event) => updateForm('ticker', event.target.value.toUpperCase())} className="w-full rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3 text-white outline-none transition focus:border-emerald-300/40" placeholder="AAPL" />
+                <input value={form.ticker} onChange={(event) => { updateForm('ticker', event.target.value.toUpperCase()); setPriceLookupError(null); setLatestPriceInfo(null); }} className="w-full rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3 text-white outline-none transition focus:border-emerald-300/40" placeholder="AAPL" />
               </label>
               <label className="space-y-2 text-sm text-slate-300">
                 <span>Trade Date</span>
@@ -877,8 +915,20 @@ export function TradesPage() {
                 <input type="number" min="0" step="0.01" value={form.quantity} onChange={(event) => updateForm('quantity', event.target.value)} className="w-full rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3 text-white outline-none transition focus:border-emerald-300/40" />
               </label>
               <label className="space-y-2 text-sm text-slate-300">
-                <span>Price</span>
+                <div className="flex items-center justify-between gap-3">
+                  <span>Price</span>
+                  <button
+                    type="button"
+                    onClick={() => void handleLoadLatestPrice()}
+                    disabled={priceLookupLoading || form.ticker.trim().length === 0}
+                    className="rounded-full border border-emerald-300/30 bg-emerald-400/10 px-3 py-1.5 text-xs font-medium text-emerald-200 transition hover:bg-emerald-400/20 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/5 disabled:text-slate-500"
+                  >
+                    {priceLookupLoading ? 'Loading...' : 'Use Current Price'}
+                  </button>
+                </div>
                 <input type="number" min="0" step="0.01" value={form.price} onChange={(event) => updateForm('price', event.target.value)} className="w-full rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3 text-white outline-none transition focus:border-emerald-300/40" />
+                {latestPriceInfo ? <span className="block text-xs text-emerald-300">{latestPriceInfo}</span> : null}
+                {priceLookupError ? <span className="block text-xs text-rose-300">{priceLookupError}</span> : null}
               </label>
               <label className="space-y-2 text-sm text-slate-300 md:col-span-2">
                 <span>Fee</span>
