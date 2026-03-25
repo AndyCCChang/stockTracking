@@ -295,7 +295,7 @@ export function PositionsPage() {
             Positions are derived from remaining BUY lots. You can manage those open lots here, and the position summary will refresh after each change.
           </p>
         </div>
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
           <article className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
             <p className="text-xs uppercase tracking-[0.22em] text-slate-500">Open Tickers</p>
             <p className="mt-2 text-2xl font-semibold text-white">{items.length}</p>
@@ -304,13 +304,15 @@ export function PositionsPage() {
             <p className="text-xs uppercase tracking-[0.22em] text-slate-500">Open Lots</p>
             <p className="mt-2 text-2xl font-semibold text-white">{summary.totalLots}</p>
           </article>
-          <article className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
-            <p className="text-xs uppercase tracking-[0.22em] text-slate-500">Market Value</p>
-            <p className="mt-2 overflow-hidden text-ellipsis whitespace-nowrap text-lg font-semibold leading-tight text-white sm:text-xl xl:text-2xl">{formatCurrency(summary.totalMarketValue)}</p>
+          <article className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 sm:col-span-2 xl:col-span-2">
+            <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Market Value</p>
+            <p className="mt-2 whitespace-nowrap text-sm font-semibold leading-tight tracking-tight text-white sm:text-base lg:text-lg xl:text-xl">
+              {formatCurrency(summary.totalMarketValue)}
+            </p>
           </article>
-          <article className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
-            <p className="text-xs uppercase tracking-[0.22em] text-slate-500">Unrealized PnL</p>
-            <p className={`mt-2 overflow-hidden text-ellipsis whitespace-nowrap text-lg font-semibold leading-tight sm:text-xl xl:text-2xl ${getTone(summary.totalUnrealizedPnL)}`}>
+          <article className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 sm:col-span-2 xl:col-span-2">
+            <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Unrealized PnL</p>
+            <p className={`mt-2 whitespace-nowrap text-sm font-semibold leading-tight tracking-tight sm:text-base lg:text-lg xl:text-xl ${getTone(summary.totalUnrealizedPnL)}`}>
               {formatCurrency(summary.totalUnrealizedPnL)}
             </p>
           </article>
@@ -327,22 +329,26 @@ export function PositionsPage() {
         </div>
       ) : null}
 
-      <div className="grid gap-4 md:grid-cols-3 xl:grid-cols-5">
-        <article className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+      <div className="grid gap-4 md:grid-cols-4 xl:grid-cols-8">
+        <article className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 md:col-span-2 xl:col-span-2">
           <p className="text-xs uppercase tracking-[0.22em] text-slate-500">Shares Open</p>
           <p className="mt-2 text-2xl font-semibold text-white">{summary.totalQuantity.toFixed(2)}</p>
         </article>
-        <article className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
-          <p className="text-xs uppercase tracking-[0.22em] text-slate-500">Cost Basis</p>
-          <p className="mt-2 overflow-hidden text-ellipsis whitespace-nowrap text-lg font-semibold leading-tight text-white sm:text-xl xl:text-2xl">{formatCurrency(summary.totalCostBasis)}</p>
+        <article className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 md:col-span-2 xl:col-span-2">
+          <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Cost Basis</p>
+          <p className="mt-2 whitespace-nowrap text-sm font-semibold leading-tight tracking-tight text-white sm:text-base lg:text-lg xl:text-xl">
+            {formatCurrency(summary.totalCostBasis)}
+          </p>
         </article>
-        <article className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
-          <p className="text-xs uppercase tracking-[0.22em] text-slate-500">Market Value</p>
-          <p className="mt-2 overflow-hidden text-ellipsis whitespace-nowrap text-lg font-semibold leading-tight text-white sm:text-xl xl:text-2xl">{formatCurrency(summary.totalMarketValue)}</p>
+        <article className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 md:col-span-2 xl:col-span-2">
+          <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Market Value</p>
+          <p className="mt-2 whitespace-nowrap text-sm font-semibold leading-tight tracking-tight text-white sm:text-base lg:text-lg xl:text-xl">
+            {formatCurrency(summary.totalMarketValue)}
+          </p>
         </article>
-        <article className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
-          <p className="text-xs uppercase tracking-[0.22em] text-slate-500">Net PnL</p>
-          <p className={`mt-2 overflow-hidden text-ellipsis whitespace-nowrap text-lg font-semibold leading-tight sm:text-xl xl:text-2xl ${getTone(summary.totalUnrealizedPnL)}`}>
+        <article className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 md:col-span-2 xl:col-span-2">
+          <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Net PnL</p>
+          <p className={`mt-2 whitespace-nowrap text-sm font-semibold leading-tight tracking-tight sm:text-base lg:text-lg xl:text-xl ${getTone(summary.totalUnrealizedPnL)}`}>
             {formatCurrency(summary.totalUnrealizedPnL)}
           </p>
         </article>
