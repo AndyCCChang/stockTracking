@@ -31,6 +31,24 @@ type LotFormState = {
   currency: string;
 };
 
+type PositionSortKey =
+  | 'ticker'
+  | 'quantity'
+  | 'averageCost'
+  | 'latestPrice'
+  | 'costBasis'
+  | 'marketValue'
+  | 'unrealizedPnL'
+  | 'unrealizedReturnRate'
+  | 'openLotsCount';
+
+type SortDirection = 'asc' | 'desc';
+
+type SortState = {
+  key: PositionSortKey;
+  direction: SortDirection;
+};
+
 const QUANTITY_EPSILON = 0.000001;
 
 function formatCurrency(value: number | null, currency = 'USD') {
@@ -84,6 +102,14 @@ function toNumber(value: string) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function renderSortIndicator(active: boolean, direction: SortDirection) {
+  if (!active) {
+    return ' <>';
+  }
+
+  return direction === 'asc' ? ' ^' : ' v';
+}
+
 function buildEditableLots(trades: TradeRecord[]) {
   return trades
     .filter((trade) => trade.type === 'BUY')
@@ -131,6 +157,7 @@ export function PositionsPage() {
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [savingLotId, setSavingLotId] = useState<number | null>(null);
   const [deletingLotId, setDeletingLotId] = useState<number | null>(null);
+  const [sort, setSort] = useState<SortState>({ key: 'ticker', direction: 'asc' });
 
   async function loadData() {
     try {
@@ -181,6 +208,60 @@ export function PositionsPage() {
       totalReturnRate: totalUnrealizedPnL == null ? null : totalCostBasis === 0 ? 0 : totalUnrealizedPnL / totalCostBasis
     };
   }, [items]);
+
+
+  const sortedItems = useMemo(() => {
+    const sorted = [...items].sort((left, right) => {
+      const multiplier = sort.direction === 'asc' ? 1 : -1;
+
+      if (sort.key === 'ticker') {
+        return left.ticker.localeCompare(right.ticker) * multiplier;
+      }
+
+      const leftValue = left[sort.key];
+      const rightValue = right[sort.key];
+
+      if (leftValue == null && rightValue == null) {
+        return left.ticker.localeCompare(right.ticker);
+      }
+
+      if (leftValue == null) {
+        return 1;
+      }
+
+      if (rightValue == null) {
+        return -1;
+      }
+
+      if (leftValue < rightValue) {
+        return -1 * multiplier;
+      }
+
+      if (leftValue > rightValue) {
+        return 1 * multiplier;
+      }
+
+      return left.ticker.localeCompare(right.ticker);
+    });
+
+    return sorted;
+  }, [items, sort]);
+
+  function toggleSort(key: PositionSortKey) {
+    setSort((current) => {
+      if (current.key === key) {
+        return {
+          key,
+          direction: current.direction === 'asc' ? 'desc' : 'asc'
+        };
+      }
+
+      return {
+        key,
+        direction: key === 'ticker' ? 'asc' : 'desc'
+      };
+    });
+  }
 
   function resetLotEditor() {
     setEditingLotId(null);
@@ -365,15 +446,51 @@ export function PositionsPage() {
           <table className="min-w-full text-sm">
             <thead className="border-b border-white/10 bg-slate-950/40 text-left text-xs uppercase tracking-[0.22em] text-slate-400">
               <tr>
-                <th className="px-4 py-3">Ticker</th>
-                <th className="px-4 py-3">Quantity</th>
-                <th className="px-4 py-3">Avg Cost</th>
-                <th className="px-4 py-3">Latest Price</th>
-                <th className="px-4 py-3">Cost Basis</th>
-                <th className="px-4 py-3">Market Value</th>
-                <th className="px-4 py-3">Unrealized</th>
-                <th className="px-4 py-3">Return</th>
-                <th className="px-4 py-3">Open Lots</th>
+                <th className="px-4 py-3">
+                  <button type="button" onClick={() => toggleSort('ticker')} className="whitespace-nowrap text-left transition hover:text-white">
+                    {`Ticker${renderSortIndicator(sort.key === 'ticker', sort.direction)}`}
+                  </button>
+                </th>
+                <th className="px-4 py-3">
+                  <button type="button" onClick={() => toggleSort('quantity')} className="whitespace-nowrap text-left transition hover:text-white">
+                    {`Quantity${renderSortIndicator(sort.key === 'quantity', sort.direction)}`}
+                  </button>
+                </th>
+                <th className="px-4 py-3">
+                  <button type="button" onClick={() => toggleSort('averageCost')} className="whitespace-nowrap text-left transition hover:text-white">
+                    {`Avg Cost${renderSortIndicator(sort.key === 'averageCost', sort.direction)}`}
+                  </button>
+                </th>
+                <th className="px-4 py-3">
+                  <button type="button" onClick={() => toggleSort('latestPrice')} className="whitespace-nowrap text-left transition hover:text-white">
+                    {`Latest Price${renderSortIndicator(sort.key === 'latestPrice', sort.direction)}`}
+                  </button>
+                </th>
+                <th className="px-4 py-3">
+                  <button type="button" onClick={() => toggleSort('costBasis')} className="whitespace-nowrap text-left transition hover:text-white">
+                    {`Cost Basis${renderSortIndicator(sort.key === 'costBasis', sort.direction)}`}
+                  </button>
+                </th>
+                <th className="px-4 py-3">
+                  <button type="button" onClick={() => toggleSort('marketValue')} className="whitespace-nowrap text-left transition hover:text-white">
+                    {`Market Value${renderSortIndicator(sort.key === 'marketValue', sort.direction)}`}
+                  </button>
+                </th>
+                <th className="px-4 py-3">
+                  <button type="button" onClick={() => toggleSort('unrealizedPnL')} className="whitespace-nowrap text-left transition hover:text-white">
+                    {`Unrealized${renderSortIndicator(sort.key === 'unrealizedPnL', sort.direction)}`}
+                  </button>
+                </th>
+                <th className="px-4 py-3">
+                  <button type="button" onClick={() => toggleSort('unrealizedReturnRate')} className="whitespace-nowrap text-left transition hover:text-white">
+                    {`Return${renderSortIndicator(sort.key === 'unrealizedReturnRate', sort.direction)}`}
+                  </button>
+                </th>
+                <th className="px-4 py-3">
+                  <button type="button" onClick={() => toggleSort('openLotsCount')} className="whitespace-nowrap text-left transition hover:text-white">
+                    {`Open Lots${renderSortIndicator(sort.key === 'openLotsCount', sort.direction)}`}
+                  </button>
+                </th>
                 <th className="px-4 py-3">Actions</th>
               </tr>
             </thead>
@@ -391,7 +508,7 @@ export function PositionsPage() {
                   </td>
                 </tr>
               ) : (
-                items.flatMap((item) => {
+                sortedItems.flatMap((item) => {
                   const lots = lotsByTicker.get(item.ticker) ?? [];
                   const isExpanded = expandedTicker === item.ticker;
 
