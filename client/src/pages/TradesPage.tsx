@@ -656,134 +656,6 @@ export function TradesPage() {
         ))}
       </div>
 
-      <section className="rounded-3xl border border-white/10 bg-white/5 p-5">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <h2 className="text-lg font-semibold text-white">CSV Import / Export</h2>
-            <p className="mt-1 max-w-3xl text-sm text-slate-400">
-              Import trades with preview before commit. For SPECIFIC SELL rows, use an `allocations` JSON column and optionally an `importRef` column so allocations can reference BUY rows in the same file.
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-3">
-            <input ref={fileInputRef} type="file" accept=".csv,text/csv" className="hidden" onChange={(event) => void handleCsvFileSelected(event)} />
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              className="rounded-full border border-emerald-300/30 bg-emerald-400/10 px-4 py-2 text-sm font-medium text-emerald-200 transition hover:bg-emerald-400/20"
-            >
-              Upload CSV
-            </button>
-            <a
-              href={getTradesExportUrl()}
-              className="rounded-full border border-white/10 px-4 py-2 text-sm font-medium text-slate-200 transition hover:text-white"
-            >
-              Export Trades CSV
-            </a>
-            <a
-              href={getYearlySummaryExportUrl()}
-              className="rounded-full border border-white/10 px-4 py-2 text-sm font-medium text-slate-200 transition hover:text-white"
-            >
-              Export Yearly CSV
-            </a>
-          </div>
-        </div>
-
-        {csvError ? (
-          <div className="mt-4 rounded-2xl border border-rose-400/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">{csvError}</div>
-        ) : null}
-        {csvMessage ? (
-          <div className="mt-4 rounded-2xl border border-emerald-400/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">{csvMessage}</div>
-        ) : null}
-
-        <div className="mt-5 grid gap-4 xl:grid-cols-[minmax(0,0.72fr)_minmax(340px,0.28fr)]">
-          <div className="rounded-2xl border border-white/10 bg-slate-950/35">
-            <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
-              <div>
-                <p className="text-sm font-medium text-white">Import Preview</p>
-                <p className="mt-1 text-xs text-slate-500">{csvFileName ? `File: ${csvFileName}` : 'No CSV selected yet'}</p>
-              </div>
-              {csvPreviewRows.length > 0 ? (
-                <button
-                  type="button"
-                  onClick={resetCsvImport}
-                  className="rounded-full border border-white/10 px-3 py-1.5 text-xs font-medium text-slate-300 transition hover:text-white"
-                >
-                  Clear Preview
-                </button>
-              ) : null}
-            </div>
-            <div className="overflow-x-auto">
-              <table className="min-w-full text-sm text-slate-200">
-                <thead className="border-b border-white/10 text-left text-xs uppercase tracking-[0.22em] text-slate-400">
-                  <tr>
-                    <th className="px-4 py-3">Row</th>
-                    <th className="px-4 py-3">Status</th>
-                    <th className="px-4 py-3">Ticker</th>
-                    <th className="px-4 py-3">Date</th>
-                    <th className="px-4 py-3">Type</th>
-                    <th className="px-4 py-3">Method</th>
-                    <th className="px-4 py-3">Quantity</th>
-                    <th className="px-4 py-3">Error</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {csvPreviewRows.length === 0 ? (
-                    <tr>
-                      <td colSpan={8} className="px-4 py-8 text-center text-slate-400">
-                        Upload a CSV to preview parsed rows before import.
-                      </td>
-                    </tr>
-                  ) : (
-                    csvPreviewRows.map((row) => (
-                      <tr key={row.rowNumber} className="border-b border-white/10 last:border-b-0">
-                        <td className="px-4 py-3">{row.rowNumber}</td>
-                        <td className="px-4 py-3">
-                          <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${row.status === 'ready' ? 'bg-emerald-400/15 text-emerald-200' : 'bg-rose-400/15 text-rose-200'}`}>
-                            {row.status === 'ready' ? 'Ready' : 'Error'}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3">{(row.parsed?.ticker ?? getCsvField(row.source, 'ticker')) || 'N/A'}</td>
-                        <td className="px-4 py-3">{(row.parsed?.tradeDate ?? getCsvField(row.source, 'tradeDate')) || 'N/A'}</td>
-                        <td className="px-4 py-3">{(row.parsed?.type ?? getCsvField(row.source, 'type')) || 'N/A'}</td>
-                        <td className="px-4 py-3">{(row.parsed?.lotSelectionMethod ?? getCsvField(row.source, 'lotSelectionMethod')) || 'FIFO'}</td>
-                        <td className="px-4 py-3">{(row.parsed?.quantity?.toFixed(2) ?? getCsvField(row.source, 'quantity')) || 'N/A'}</td>
-                        <td className="max-w-[280px] px-4 py-3 text-slate-400">{row.error ?? 'Ready to import'}</td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          <aside className="rounded-2xl border border-white/10 bg-slate-950/35 p-4">
-            <h3 className="text-base font-semibold text-white">Import Summary</h3>
-            <div className="mt-4 grid gap-3">
-              <article className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
-                <p className="text-xs uppercase tracking-[0.22em] text-slate-500">Ready Rows</p>
-                <p className="mt-2 text-2xl font-semibold text-emerald-300">{csvReadyRows.length}</p>
-              </article>
-              <article className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
-                <p className="text-xs uppercase tracking-[0.22em] text-slate-500">Error Rows</p>
-                <p className="mt-2 text-2xl font-semibold text-rose-300">{csvErrorRows.length}</p>
-              </article>
-            </div>
-            <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-slate-300">
-              <p className="font-medium text-white">Allocations JSON Example</p>
-              <code className="mt-2 block whitespace-pre-wrap text-xs text-emerald-200">[{`{"buyTradeRef":"AAPL-LOT-1","quantity":5}`}]</code>
-            </div>
-            <button
-              type="button"
-              disabled={csvReadyRows.length === 0 || csvErrorRows.length > 0 || isImportingCsv}
-              onClick={() => void handleCsvImport()}
-              className="mt-4 w-full rounded-full bg-emerald-400 px-5 py-2.5 text-sm font-semibold text-slate-950 transition hover:bg-emerald-300 disabled:cursor-not-allowed disabled:bg-slate-600 disabled:text-slate-300"
-            >
-              {isImportingCsv ? 'Importing...' : 'Import Ready Rows'}
-            </button>
-          </aside>
-        </div>
-      </section>
-
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1.35fr)_minmax(360px,0.9fr)]">
         <section className="rounded-3xl border border-white/10 bg-white/5">
           <div className="flex items-center justify-between border-b border-white/10 px-5 py-4">
@@ -1019,6 +891,135 @@ export function TradesPage() {
           </form>
         </section>
       </div>
+
+      <section className="rounded-3xl border border-white/10 bg-white/5 p-5">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <h2 className="text-lg font-semibold text-white">CSV Import / Export</h2>
+            <p className="mt-1 max-w-3xl text-sm text-slate-400">
+              Import trades with preview before commit. For SPECIFIC SELL rows, use an `allocations` JSON column and optionally an `importRef` column so allocations can reference BUY rows in the same file.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-3">
+            <input ref={fileInputRef} type="file" accept=".csv,text/csv" className="hidden" onChange={(event) => void handleCsvFileSelected(event)} />
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="rounded-full border border-emerald-300/30 bg-emerald-400/10 px-4 py-2 text-sm font-medium text-emerald-200 transition hover:bg-emerald-400/20"
+            >
+              Upload CSV
+            </button>
+            <a
+              href={getTradesExportUrl()}
+              className="rounded-full border border-white/10 px-4 py-2 text-sm font-medium text-slate-200 transition hover:text-white"
+            >
+              Export Trades CSV
+            </a>
+            <a
+              href={getYearlySummaryExportUrl()}
+              className="rounded-full border border-white/10 px-4 py-2 text-sm font-medium text-slate-200 transition hover:text-white"
+            >
+              Export Yearly CSV
+            </a>
+          </div>
+        </div>
+
+        {csvError ? (
+          <div className="mt-4 rounded-2xl border border-rose-400/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">{csvError}</div>
+        ) : null}
+        {csvMessage ? (
+          <div className="mt-4 rounded-2xl border border-emerald-400/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">{csvMessage}</div>
+        ) : null}
+
+        <div className="mt-5 grid gap-4 xl:grid-cols-[minmax(0,0.72fr)_minmax(340px,0.28fr)]">
+          <div className="rounded-2xl border border-white/10 bg-slate-950/35">
+            <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
+              <div>
+                <p className="text-sm font-medium text-white">Import Preview</p>
+                <p className="mt-1 text-xs text-slate-500">{csvFileName ? `File: ${csvFileName}` : 'No CSV selected yet'}</p>
+              </div>
+              {csvPreviewRows.length > 0 ? (
+                <button
+                  type="button"
+                  onClick={resetCsvImport}
+                  className="rounded-full border border-white/10 px-3 py-1.5 text-xs font-medium text-slate-300 transition hover:text-white"
+                >
+                  Clear Preview
+                </button>
+              ) : null}
+            </div>
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-sm text-slate-200">
+                <thead className="border-b border-white/10 text-left text-xs uppercase tracking-[0.22em] text-slate-400">
+                  <tr>
+                    <th className="px-4 py-3">Row</th>
+                    <th className="px-4 py-3">Status</th>
+                    <th className="px-4 py-3">Ticker</th>
+                    <th className="px-4 py-3">Date</th>
+                    <th className="px-4 py-3">Type</th>
+                    <th className="px-4 py-3">Method</th>
+                    <th className="px-4 py-3">Quantity</th>
+                    <th className="px-4 py-3">Error</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {csvPreviewRows.length === 0 ? (
+                    <tr>
+                      <td colSpan={8} className="px-4 py-8 text-center text-slate-400">
+                        Upload a CSV to preview parsed rows before import.
+                      </td>
+                    </tr>
+                  ) : (
+                    csvPreviewRows.map((row) => (
+                      <tr key={row.rowNumber} className="border-b border-white/10 last:border-b-0">
+                        <td className="px-4 py-3">{row.rowNumber}</td>
+                        <td className="px-4 py-3">
+                          <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${row.status === 'ready' ? 'bg-emerald-400/15 text-emerald-200' : 'bg-rose-400/15 text-rose-200'}`}>
+                            {row.status === 'ready' ? 'Ready' : 'Error'}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3">{(row.parsed?.ticker ?? getCsvField(row.source, 'ticker')) || 'N/A'}</td>
+                        <td className="px-4 py-3">{(row.parsed?.tradeDate ?? getCsvField(row.source, 'tradeDate')) || 'N/A'}</td>
+                        <td className="px-4 py-3">{(row.parsed?.type ?? getCsvField(row.source, 'type')) || 'N/A'}</td>
+                        <td className="px-4 py-3">{(row.parsed?.lotSelectionMethod ?? getCsvField(row.source, 'lotSelectionMethod')) || 'FIFO'}</td>
+                        <td className="px-4 py-3">{(row.parsed?.quantity?.toFixed(2) ?? getCsvField(row.source, 'quantity')) || 'N/A'}</td>
+                        <td className="max-w-[280px] px-4 py-3 text-slate-400">{row.error ?? 'Ready to import'}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <aside className="rounded-2xl border border-white/10 bg-slate-950/35 p-4">
+            <h3 className="text-base font-semibold text-white">Import Summary</h3>
+            <div className="mt-4 grid gap-3">
+              <article className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+                <p className="text-xs uppercase tracking-[0.22em] text-slate-500">Ready Rows</p>
+                <p className="mt-2 text-2xl font-semibold text-emerald-300">{csvReadyRows.length}</p>
+              </article>
+              <article className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+                <p className="text-xs uppercase tracking-[0.22em] text-slate-500">Error Rows</p>
+                <p className="mt-2 text-2xl font-semibold text-rose-300">{csvErrorRows.length}</p>
+              </article>
+            </div>
+            <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-slate-300">
+              <p className="font-medium text-white">Allocations JSON Example</p>
+              <code className="mt-2 block whitespace-pre-wrap text-xs text-emerald-200">[{`{"buyTradeRef":"AAPL-LOT-1","quantity":5}`}]</code>
+            </div>
+            <button
+              type="button"
+              disabled={csvReadyRows.length === 0 || csvErrorRows.length > 0 || isImportingCsv}
+              onClick={() => void handleCsvImport()}
+              className="mt-4 w-full rounded-full bg-emerald-400 px-5 py-2.5 text-sm font-semibold text-slate-950 transition hover:bg-emerald-300 disabled:cursor-not-allowed disabled:bg-slate-600 disabled:text-slate-300"
+            >
+              {isImportingCsv ? 'Importing...' : 'Import Ready Rows'}
+            </button>
+          </aside>
+        </div>
+      </section>
+
     </section>
   );
 }
