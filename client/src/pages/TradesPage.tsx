@@ -205,6 +205,7 @@ function buildCsvPreviewRow(source: Record<string, string>, rowNumber: number): 
 
 export function TradesPage() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const tradeDateInputRef = useRef<HTMLInputElement | null>(null);
   const [trades, setTrades] = useState<TradeRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [tableError, setTableError] = useState<string | null>(null);
@@ -622,6 +623,20 @@ export function TradesPage() {
     }
   }
 
+  function openTradeDatePicker() {
+    const input = tradeDateInputRef.current;
+    if (!input) {
+      return;
+    }
+
+    if (typeof input.showPicker === 'function') {
+      input.showPicker();
+      return;
+    }
+
+    input.focus();
+  }
+
   async function handleCsvImport() {
     if (csvReadyRows.length === 0 || csvErrorRows.length > 0) {
       return;
@@ -756,8 +771,23 @@ export function TradesPage() {
                 <input value={form.ticker} onChange={(event) => { updateForm('ticker', event.target.value.toUpperCase()); setPriceLookupError(null); setLatestPriceInfo(null); }} className="w-full rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3 text-white outline-none transition focus:border-emerald-300/40" placeholder="AAPL" />
               </label>
               <label className="space-y-2 text-sm text-slate-300">
-                <span>Trade Date</span>
-                <input type="date" value={form.tradeDate} onChange={(event) => updateForm('tradeDate', event.target.value)} className="w-full rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3 text-white outline-none transition focus:border-emerald-300/40" />
+                <div className="flex items-center justify-between gap-3">
+                  <span>Trade Date</span>
+                  <button
+                    type="button"
+                    onClick={openTradeDatePicker}
+                    className="rounded-full border border-emerald-300/30 bg-emerald-400/10 px-3 py-1.5 text-xs font-medium text-emerald-200 transition hover:bg-emerald-400/20"
+                  >
+                    Open Calendar
+                  </button>
+                </div>
+                <input
+                  ref={tradeDateInputRef}
+                  type="date"
+                  value={form.tradeDate}
+                  onChange={(event) => updateForm('tradeDate', event.target.value)}
+                  className="w-full rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3 text-white outline-none transition focus:border-emerald-300/40"
+                />
               </label>
               <label className="space-y-2 text-sm text-slate-300">
                 <span>Type</span>
