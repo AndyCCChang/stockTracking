@@ -601,6 +601,7 @@ export function PositionsPage() {
           <table className="min-w-full text-sm">
             <thead className="border-b border-white/10 bg-slate-950/40 text-left text-xs uppercase tracking-[0.22em] text-slate-400">
               <tr>
+                <th className="px-4 py-3">Actions</th>
                 <th className="px-4 py-3">
                   <button type="button" onClick={() => toggleSort('ticker')} className="whitespace-nowrap text-left transition hover:text-white">
                     {`Ticker${renderSortIndicator(sort.key === 'ticker', sort.direction)}`}
@@ -646,7 +647,6 @@ export function PositionsPage() {
                     {`Open Lots${renderSortIndicator(sort.key === 'openLotsCount', sort.direction)}`}
                   </button>
                 </th>
-                <th className="px-4 py-3">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -670,6 +670,15 @@ export function PositionsPage() {
                   return [
                     <tr key={item.ticker} className="border-b border-white/10 text-slate-200 last:border-b-0">
                       <td className="px-4 py-4">
+                        <button
+                          type="button"
+                          onClick={() => toggleTicker(item.ticker)}
+                          className="rounded-full border border-emerald-300/30 bg-emerald-400/10 px-3 py-1.5 text-xs font-medium text-emerald-200 transition hover:bg-emerald-400/20"
+                        >
+                          {isExpanded ? 'Hide Lots' : 'Manage Lots'}
+                        </button>
+                      </td>
+                      <td className="px-4 py-4">
                         <div className="font-medium text-white">{item.ticker}</div>
                         <div className="mt-1 text-xs text-slate-400">Current: {formatCurrency(item.latestPrice, item.currency)}</div>
                       </td>
@@ -685,15 +694,6 @@ export function PositionsPage() {
                         {formatPercent(item.unrealizedReturnRate)}
                       </td>
                       <td className="px-4 py-4">{item.openLotsCount}</td>
-                      <td className="px-4 py-4">
-                        <button
-                          type="button"
-                          onClick={() => toggleTicker(item.ticker)}
-                          className="rounded-full border border-emerald-300/30 bg-emerald-400/10 px-3 py-1.5 text-xs font-medium text-emerald-200 transition hover:bg-emerald-400/20"
-                        >
-                          {isExpanded ? 'Hide Lots' : 'Manage Lots'}
-                        </button>
-                      </td>
                     </tr>,
                     isExpanded ? (
                       <tr key={`${item.ticker}-editor`} className="border-b border-white/10 bg-slate-950/20 text-slate-200 last:border-b-0">
