@@ -53,6 +53,7 @@ type SortState = {
 type CompositionItem = {
   ticker: string;
   value: number;
+  quantity: number;
   currency: string;
   share: number;
 };
@@ -172,6 +173,7 @@ function CompositionTooltip({
     <div className="rounded-2xl border border-white/10 bg-slate-950/95 px-4 py-3 shadow-2xl">
       <p className="text-sm font-semibold text-white">{item.ticker}</p>
       <p className="mt-2 text-sm text-slate-300">{formatCurrency(item.value, item.currency)}</p>
+      <p className="mt-1 text-sm text-slate-300">{formatQuantity(item.quantity)} shares</p>
       <p className="mt-1 text-xs uppercase tracking-[0.18em] text-slate-500">{formatPercent(item.share)}</p>
     </div>
   );
@@ -274,6 +276,7 @@ export function PositionsPage() {
       .map((item) => ({
         ticker: item.ticker,
         value: item.marketValue ?? 0,
+        quantity: item.quantity,
         currency: item.currency
       }));
 
@@ -588,7 +591,10 @@ export function PositionsPage() {
                     </div>
                     <span className="text-sm text-slate-300">{formatCurrency(item.value, item.currency)}</span>
                   </div>
-                  <p className="mt-2 text-xs uppercase tracking-[0.18em] text-slate-500">{formatPercent(item.share)}</p>
+                  <div className="mt-2 flex items-center justify-between gap-3 text-sm text-slate-300">
+                    <span>{formatQuantity(item.quantity)} shares</span>
+                    <span className="text-xs uppercase tracking-[0.18em] text-slate-500">{formatPercent(item.share)}</span>
+                  </div>
                 </div>
               );
             })}
