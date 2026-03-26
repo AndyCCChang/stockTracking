@@ -13,6 +13,7 @@ export type HealthResponse = {
 export type LatestPriceResponse = {
   ticker: string;
   price: number | null;
+  previousClose: number | null;
   asOf: string;
   provider: string;
   source: 'live' | 'cache' | 'unavailable';
@@ -136,10 +137,13 @@ export type PositionItem = {
   quantity: number;
   averageCost: number;
   latestPrice: number | null;
+  previousClose: number | null;
   costBasis: number;
   marketValue: number | null;
   unrealizedPnL: number | null;
   unrealizedReturnRate: number | null;
+  todaysPnL: number | null;
+  todaysPnLRate: number | null;
   openLotsCount: number;
   currency: string;
 };

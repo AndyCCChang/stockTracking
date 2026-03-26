@@ -41,6 +41,7 @@ type PositionSortKey =
   | 'marketValue'
   | 'unrealizedPnL'
   | 'unrealizedReturnRate'
+  | 'todaysPnL'
   | 'openLotsCount';
 
 type SortDirection = 'asc' | 'desc';
@@ -254,6 +255,7 @@ export function PositionsPage() {
     const totalCostBasis = items.reduce((sum, item) => sum + item.costBasis, 0);
     const totalMarketValue = sumNullable(items.map((item) => item.marketValue));
     const totalUnrealizedPnL = sumNullable(items.map((item) => item.unrealizedPnL));
+    const totalTodaysPnL = sumNullable(items.map((item) => item.todaysPnL));
     const totalLots = items.reduce((sum, item) => sum + item.openLotsCount, 0);
 
     return {
@@ -261,9 +263,10 @@ export function PositionsPage() {
       totalCostBasis,
       totalMarketValue,
       totalUnrealizedPnL,
+      totalTodaysPnL,
       totalLots,
       hasUnavailablePrices: items.some(
-        (item) => item.latestPrice == null || item.marketValue == null || item.unrealizedPnL == null
+        (item) => item.latestPrice == null || item.marketValue == null || item.unrealizedPnL == null || item.todaysPnL == null
       ),
       totalReturnRate: totalUnrealizedPnL == null ? null : totalCostBasis === 0 ? 0 : totalUnrealizedPnL / totalCostBasis
     };
@@ -523,6 +526,12 @@ export function PositionsPage() {
             {formatPercent(summary.totalReturnRate)}
           </p>
         </article>
+        <article className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 md:col-span-2 xl:col-span-2">
+          <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Today's Gain / Loss</p>
+          <p className={`mt-2 whitespace-nowrap text-sm font-semibold leading-tight tracking-tight sm:text-base lg:text-lg xl:text-xl ${getTone(summary.totalTodaysPnL)}`}>
+            {formatCurrency(summary.totalTodaysPnL)}
+          </p>
+        </article>
       </div>
 
       <section className="grid gap-6 xl:grid-cols-[minmax(0,1.1fr)_minmax(280px,0.9fr)]">
@@ -644,6 +653,11 @@ export function PositionsPage() {
                   </button>
                 </th>
                 <th className="px-4 py-3">
+                  <button type="button" onClick={() => toggleSort('todaysPnL')} className="whitespace-nowrap text-left transition hover:text-white">
+                    {`Today${renderSortIndicator(sort.key === 'todaysPnL', sort.direction)}`}
+                  </button>
+                </th>
+                <th className="px-4 py-3">
                   <button type="button" onClick={() => toggleSort('unrealizedReturnRate')} className="whitespace-nowrap text-left transition hover:text-white">
                     {`Return${renderSortIndicator(sort.key === 'unrealizedReturnRate', sort.direction)}`}
                   </button>
@@ -658,13 +672,13 @@ export function PositionsPage() {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={10} className="px-4 py-10 text-center text-slate-400">
+                  <td colSpan={11} className="px-4 py-10 text-center text-slate-400">
                     Loading positions...
                   </td>
                 </tr>
               ) : items.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="px-4 py-10 text-center text-slate-400">
+                  <td colSpan={11} className="px-4 py-10 text-center text-slate-400">
                     No open positions right now.
                   </td>
                 </tr>
@@ -696,6 +710,10 @@ export function PositionsPage() {
                       <td className={`px-4 py-4 font-semibold ${getTone(item.unrealizedPnL)}`}>
                         {formatCurrency(item.unrealizedPnL, item.currency)}
                       </td>
+                      <td className={`px-4 py-4 font-semibold ${getTone(item.todaysPnL)}`}>
+                        <div>{formatCurrency(item.todaysPnL, item.currency)}</div>
+                        
+                      </td>
                       <td className={`px-4 py-4 ${getTone(item.unrealizedReturnRate)}`}>
                         {formatPercent(item.unrealizedReturnRate)}
                       </td>
@@ -703,7 +721,7 @@ export function PositionsPage() {
                     </tr>,
                     isExpanded ? (
                       <tr key={`${item.ticker}-editor`} className="border-b border-white/10 bg-slate-950/20 text-slate-200 last:border-b-0">
-                        <td colSpan={10} className="px-4 py-5">
+                        <td colSpan={11} className="px-4 py-5">
                           <div className="space-y-4">
                             <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
                               <div>

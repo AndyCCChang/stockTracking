@@ -6,6 +6,7 @@ export type PriceQuoteSource = 'live' | 'cache' | 'unavailable';
 export type LatestPriceQuote = {
   ticker: string;
   price: number | null;
+  previousClose: number | null;
   asOf: string;
   provider: SupportedPriceProvider;
   source: PriceQuoteSource;
@@ -14,6 +15,7 @@ export type LatestPriceQuote = {
 
 type PriceCacheEntry = {
   price: number;
+  previousClose: number | null;
   asOf: string;
   expiresAt: number;
 };
@@ -44,15 +46,16 @@ function getAnyCacheEntry(ticker: string) {
   return priceCache.get(ticker) ?? null;
 }
 
-function setCacheEntry(ticker: string, price: number) {
+function setCacheEntry(ticker: string, price: number, previousClose: number | null) {
   const asOf = new Date().toISOString();
   priceCache.set(ticker, {
     price,
+    previousClose,
     asOf,
     expiresAt: Date.now() + CACHE_TTL_MS
   });
 
-  return { price, asOf };
+  return { price, previousClose, asOf };
 }
 
 function toErrorMessage(error: unknown, ticker: string) {
@@ -65,12 +68,20 @@ function toErrorMessage(error: unknown, ticker: string) {
 
 async function fetchLivePrice(ticker: string) {
   const quote = await yahooFinance.quote(ticker);
-  const price = Number((quote as { regularMarketPrice?: number | null }).regularMarketPrice);
+  const { regularMarketPrice, regularMarketPreviousClose, previousClose } = quote as {
+    regularMarketPrice?: number | null;
+    regularMarketPreviousClose?: number | null;
+    previousClose?: number | null;
+  };
+  const price = Number(regularMarketPrice);
   if (!Number.isFinite(price) || price <= 0) {
     throw new Error(`Yahoo Finance did not return a valid current price for ${ticker}`);
   }
 
-  return setCacheEntry(ticker, price);
+  const resolvedPreviousClose = Number(regularMarketPreviousClose ?? previousClose);
+  const previousCloseValue = Number.isFinite(resolvedPreviousClose) && resolvedPreviousClose > 0 ? resolvedPreviousClose : null;
+
+  return setCacheEntry(ticker, price, previousCloseValue);
 }
 
 export async function getLatestPriceQuote(ticker: string): Promise<LatestPriceQuote> {
@@ -80,6 +91,7 @@ export async function getLatestPriceQuote(ticker: string): Promise<LatestPriceQu
     return {
       ticker: normalizedTicker,
       price: freshCache.price,
+      previousClose: freshCache.previousClose,
       asOf: freshCache.asOf,
       provider: providerName,
       source: 'cache',
@@ -92,6 +104,7 @@ export async function getLatestPriceQuote(ticker: string): Promise<LatestPriceQu
     return {
       ticker: normalizedTicker,
       price: live.price,
+      previousClose: live.previousClose,
       asOf: live.asOf,
       provider: providerName,
       source: 'live',
@@ -105,6 +118,7 @@ export async function getLatestPriceQuote(ticker: string): Promise<LatestPriceQu
       return {
         ticker: normalizedTicker,
         price: fallbackCache.price,
+        previousClose: fallbackCache.previousClose,
         asOf: fallbackCache.asOf,
         provider: providerName,
         source: 'cache',
@@ -115,6 +129,7 @@ export async function getLatestPriceQuote(ticker: string): Promise<LatestPriceQu
     return {
       ticker: normalizedTicker,
       price: null,
+      previousClose: null,
       asOf: new Date().toISOString(),
       provider: providerName,
       source: 'unavailable',

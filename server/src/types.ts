@@ -221,10 +221,13 @@ export type PositionApiItem = {
   quantity: number;
   averageCost: number;
   latestPrice: number | null;
+  previousClose: number | null;
   costBasis: number;
   marketValue: number | null;
   unrealizedPnL: number | null;
   unrealizedReturnRate: number | null;
+  todaysPnL: number | null;
+  todaysPnLRate: number | null;
   openLotsCount: number;
   currency: string;
 };

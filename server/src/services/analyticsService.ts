@@ -8,7 +8,7 @@ import {
   calculateUnrealizedPnL,
   calculateYearlySummary
 } from '../lib/fifo.js';
-import { getLatestPrice } from './priceService.js';
+import { getLatestPrice, getLatestPriceQuote, type LatestPriceQuote } from './priceService.js';
 import type {
   DashboardResponse,
   DistributionPoint,
@@ -53,16 +53,25 @@ function getDataset() {
   };
 }
 
-function toPositionApiItem(item: UnrealizedSummary, openLotsCount: number): PositionApiItem {
+function toPositionApiItem(item: UnrealizedSummary, openLotsCount: number, quote?: LatestPriceQuote): PositionApiItem {
+  const previousClose = quote?.previousClose ?? null;
+  const todayPerShareChange = item.marketPrice == null || previousClose == null ? null : item.marketPrice - previousClose;
+  const todaysPnL = todayPerShareChange == null ? null : todayPerShareChange * item.quantity;
+  const todaysPnLRate =
+    todayPerShareChange == null || previousClose == null || previousClose === 0 ? null : todayPerShareChange / previousClose;
+
   return {
     ticker: item.ticker,
     quantity: round(item.quantity),
     averageCost: round(item.averageCost),
     latestPrice: roundNullable(item.marketPrice),
+    previousClose: roundNullable(previousClose),
     costBasis: round(item.costBasis),
     marketValue: roundNullable(item.marketValue),
     unrealizedPnL: roundNullable(item.unrealizedPnL),
     unrealizedReturnRate: roundNullable(item.unrealizedReturnRate),
+    todaysPnL: roundNullable(todaysPnL),
+    todaysPnLRate: roundNullable(todaysPnLRate),
     openLotsCount,
     currency: item.currency
   };
@@ -219,8 +228,10 @@ export async function getPositionsAnalytics(): Promise<PositionApiItem[]> {
   const positionSummaries = calculateOpenPositionsFromLots(trades, allocations);
   const openLotsCountMap = buildOpenLotsCountMap(positionSummaries);
   const unrealized = await calculateUnrealizedPnL(trades, allocations, getLatestPrice);
+  const quotes = await Promise.all(unrealized.map(async (item) => [item.ticker, await getLatestPriceQuote(item.ticker)] as const));
+  const quotesByTicker = new Map(quotes);
 
-  return unrealized.map((item) => toPositionApiItem(item, openLotsCountMap.get(item.ticker) ?? 0));
+  return unrealized.map((item) => toPositionApiItem(item, openLotsCountMap.get(item.ticker) ?? 0, quotesByTicker.get(item.ticker)));
 }
 
 export function getRealizedAnalytics(): RealizedApiItem[] {
