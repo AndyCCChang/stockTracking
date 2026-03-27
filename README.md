@@ -210,6 +210,12 @@ npm --prefix client run lint
 npm run build
 ```
 
+Run browser E2E smoke tests:
+```bash
+npx playwright install chromium
+npm run test:e2e
+```
+
 Latest QA report:
 ```text
 TEST_REPORT.md
