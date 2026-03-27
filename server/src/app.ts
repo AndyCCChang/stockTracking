@@ -1,6 +1,7 @@
 import express, { type NextFunction, type Request, type Response } from 'express';
 import { AppError } from './lib/errors.js';
 import analyticsRouter from './routes/analytics.js';
+import authRouter from './routes/auth.js';
 import healthRouter from './routes/health.js';
 import lotsRouter from './routes/lots.js';
 import pricesRouter from './routes/prices.js';
@@ -11,6 +12,7 @@ export function createApp() {
 
   app.use(express.json());
   app.use('/api', healthRouter);
+  app.use('/api', authRouter);
   app.use('/api', tradesRouter);
   app.use('/api', lotsRouter);
   app.use('/api', pricesRouter);

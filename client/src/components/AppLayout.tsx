@@ -1,4 +1,5 @@
-import { NavLink, Outlet } from 'react-router-dom';
+import { NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { useAuth } from '../auth/AuthContext';
 
 const navigation = [
   { to: '/', label: 'Dashboard', end: true },
@@ -10,6 +11,14 @@ const navigation = [
 ];
 
 export function AppLayout() {
+  const { user, logout } = useAuth();
+  const navigate = useNavigate();
+
+  function handleLogout() {
+    logout();
+    navigate('/login', { replace: true });
+  }
+
   return (
     <div className="min-h-screen bg-transparent text-slate-100">
       <div className="mx-auto flex min-h-screen max-w-7xl flex-col px-4 py-6 sm:px-6 lg:px-8">
@@ -19,11 +28,15 @@ export function AppLayout() {
               <p className="text-sm uppercase tracking-[0.3em] text-emerald-300/80">US Equity Journal</p>
               <h1 className="mt-3 text-3xl font-semibold tracking-tight text-white">Stock Tracking Workspace</h1>
               <p className="mt-3 max-w-2xl text-sm text-slate-300">
-                Phase 1 foundation for trade records, position monitoring, and profit analysis.
+                Your journal is private to your account. Trades, positions, allocations, and analytics are all scoped to the signed-in member.
               </p>
             </div>
             <div className="rounded-2xl border border-emerald-400/20 bg-emerald-400/10 px-4 py-3 text-sm text-emerald-200">
-              Frontend skeleton ready. Backend health check and SQLite connection included.
+              <div className="font-medium text-white">{user?.name || user?.email}</div>
+              <div className="mt-1 text-xs text-emerald-100/80">{user?.email}</div>
+              <button type="button" onClick={handleLogout} className="mt-3 rounded-full border border-white/10 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-white/10">
+                Logout
+              </button>
             </div>
           </div>
         </header>

@@ -12,6 +12,8 @@ import {
   type LotSelectionMethod,
   type SortOrder,
   type TradeFilters,
+  type LoginInput,
+  type RegisterInput,
   type TradeInput,
   type TradeLotAllocationInput,
   type TradeSortField,
@@ -46,6 +48,28 @@ function normalizeTicker(value: unknown) {
   }
 
   return value.trim().toUpperCase();
+}
+
+
+function normalizeEmail(value: unknown) {
+  if (typeof value !== 'string' || value.trim().length === 0) {
+    throw new ValidationError('email is required');
+  }
+
+  const email = value.trim().toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    throw new ValidationError('email must be valid');
+  }
+
+  return email;
+}
+
+function normalizePassword(value: unknown) {
+  if (typeof value !== 'string' || value.length < 8) {
+    throw new ValidationError('password must be at least 8 characters');
+  }
+
+  return value;
 }
 
 function toTradeType(value: unknown): TradeType {
@@ -290,4 +314,30 @@ export function validateAvailableLotsQuery(query: Record<string, string | undefi
   }
 
   return { ticker, tradeDate };
+}
+
+
+export function validateRegisterInput(payload: unknown): RegisterInput {
+  if (!payload || typeof payload !== 'object') {
+    throw new ValidationError('Invalid request body');
+  }
+
+  const input = payload as Record<string, unknown>;
+  return {
+    email: normalizeEmail(input.email),
+    password: normalizePassword(input.password),
+    name: typeof input.name === 'string' ? input.name.trim() || null : input.name == null ? null : String(input.name)
+  };
+}
+
+export function validateLoginInput(payload: unknown): LoginInput {
+  if (!payload || typeof payload !== 'object') {
+    throw new ValidationError('Invalid request body');
+  }
+
+  const input = payload as Record<string, unknown>;
+  return {
+    email: normalizeEmail(input.email),
+    password: normalizePassword(input.password)
+  };
 }

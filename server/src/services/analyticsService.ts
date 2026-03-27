@@ -46,10 +46,10 @@ function sumNullable(values: Array<number | null>) {
   return sum;
 }
 
-function getDataset() {
+function getDataset(userId: number) {
   return {
-    trades: getAllTrades(),
-    allocations: getAllTradeAllocations()
+    trades: getAllTrades(userId),
+    allocations: getAllTradeAllocations(userId)
   };
 }
 
@@ -183,8 +183,8 @@ function createEmptyDashboard(): DashboardResponse {
   };
 }
 
-export async function getDashboardAnalytics(): Promise<DashboardResponse> {
-  const { trades, allocations } = getDataset();
+export async function getDashboardAnalytics(userId: number): Promise<DashboardResponse> {
+  const { trades, allocations } = getDataset(userId);
   if (trades.length === 0) {
     return createEmptyDashboard();
   }
@@ -219,8 +219,8 @@ export async function getDashboardAnalytics(): Promise<DashboardResponse> {
   };
 }
 
-export async function getPositionsAnalytics(): Promise<PositionApiItem[]> {
-  const { trades, allocations } = getDataset();
+export async function getPositionsAnalytics(userId: number): Promise<PositionApiItem[]> {
+  const { trades, allocations } = getDataset(userId);
   if (trades.length === 0) {
     return [];
   }
@@ -234,8 +234,8 @@ export async function getPositionsAnalytics(): Promise<PositionApiItem[]> {
   return unrealized.map((item) => toPositionApiItem(item, openLotsCountMap.get(item.ticker) ?? 0, quotesByTicker.get(item.ticker)));
 }
 
-export function getRealizedAnalytics(): RealizedApiItem[] {
-  const { trades, allocations } = getDataset();
+export function getRealizedAnalytics(userId: number): RealizedApiItem[] {
+  const { trades, allocations } = getDataset(userId);
   if (trades.length === 0) {
     return [];
   }
@@ -243,8 +243,8 @@ export function getRealizedAnalytics(): RealizedApiItem[] {
   return buildRealizedItems(trades, allocations);
 }
 
-export function getPerformanceAnalytics() {
-  const { trades, allocations } = getDataset();
+export function getPerformanceAnalytics(userId: number) {
+  const { trades, allocations } = getDataset(userId);
   if (trades.length === 0) {
     return {
       winRate: 0,
@@ -275,8 +275,8 @@ export function getPerformanceAnalytics() {
   };
 }
 
-export async function getYearlySummaryAnalytics(): Promise<YearlySummary[]> {
-  const { trades, allocations } = getDataset();
+export async function getYearlySummaryAnalytics(userId: number): Promise<YearlySummary[]> {
+  const { trades, allocations } = getDataset(userId);
   if (trades.length === 0) {
     return [];
   }
@@ -285,8 +285,8 @@ export async function getYearlySummaryAnalytics(): Promise<YearlySummary[]> {
   return buildYearlyOverview(trades, allocations, unrealized);
 }
 
-export async function getMonthlySummaryAnalytics(year: string): Promise<MonthlySummaryResponse> {
-  const { trades, allocations } = getDataset();
+export async function getMonthlySummaryAnalytics(userId: number, year: string): Promise<MonthlySummaryResponse> {
+  const { trades, allocations } = getDataset(userId);
   const realizedItems = buildRealizedItems(trades, allocations);
   const unrealized = await calculateUnrealizedPnL(trades, allocations, getLatestPrice);
   const currentYear = dayjs().format('YYYY');

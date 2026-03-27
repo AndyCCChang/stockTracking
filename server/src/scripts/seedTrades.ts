@@ -1,9 +1,19 @@
+import { createUser } from '../db/userRepository.js';
+import { hashPassword } from '../utils/password.js';
 import { createTradeWithValidation, resetTrades } from '../services.js';
 import { validateTradeInput } from '../lib/validation.js';
 
 resetTrades();
 
-const aaplBuy = createTradeWithValidation(validateTradeInput({
+const demoEmail = 'demo@example.com';
+const demoPassword = 'DemoPass123!';
+const demoUserId = createUser({
+  email: demoEmail,
+  passwordHash: await hashPassword(demoPassword),
+  name: 'Demo User'
+});
+
+const aaplBuy = createTradeWithValidation(demoUserId, validateTradeInput({
   ticker: 'AAPL',
   tradeDate: '2025-01-08',
   type: 'BUY',
@@ -13,7 +23,7 @@ const aaplBuy = createTradeWithValidation(validateTradeInput({
   notes: 'Initial AAPL position'
 }));
 
-createTradeWithValidation(validateTradeInput({
+createTradeWithValidation(demoUserId, validateTradeInput({
   ticker: 'AAPL',
   tradeDate: '2025-02-12',
   type: 'SELL',
@@ -24,7 +34,7 @@ createTradeWithValidation(validateTradeInput({
   lotSelectionMethod: 'FIFO'
 }));
 
-const tslaBuy = createTradeWithValidation(validateTradeInput({
+const tslaBuy = createTradeWithValidation(demoUserId, validateTradeInput({
   ticker: 'TSLA',
   tradeDate: '2025-01-15',
   type: 'BUY',
@@ -34,7 +44,7 @@ const tslaBuy = createTradeWithValidation(validateTradeInput({
   notes: 'Starter TSLA'
 }));
 
-createTradeWithValidation(validateTradeInput({
+createTradeWithValidation(demoUserId, validateTradeInput({
   ticker: 'TSLA',
   tradeDate: '2025-03-03',
   type: 'SELL',
@@ -46,7 +56,7 @@ createTradeWithValidation(validateTradeInput({
   allocations: [{ buyTradeId: tslaBuy.id, quantity: 10 }]
 }));
 
-const nvdaBuy1 = createTradeWithValidation(validateTradeInput({
+const nvdaBuy1 = createTradeWithValidation(demoUserId, validateTradeInput({
   ticker: 'NVDA',
   tradeDate: '2025-01-22',
   type: 'BUY',
@@ -56,7 +66,7 @@ const nvdaBuy1 = createTradeWithValidation(validateTradeInput({
   notes: 'AI exposure'
 }));
 
-const nvdaBuy2 = createTradeWithValidation(validateTradeInput({
+const nvdaBuy2 = createTradeWithValidation(demoUserId, validateTradeInput({
   ticker: 'NVDA',
   tradeDate: '2025-02-10',
   type: 'BUY',
@@ -66,7 +76,7 @@ const nvdaBuy2 = createTradeWithValidation(validateTradeInput({
   notes: 'Add on breakout'
 }));
 
-createTradeWithValidation(validateTradeInput({
+createTradeWithValidation(demoUserId, validateTradeInput({
   ticker: 'NVDA',
   tradeDate: '2025-03-14',
   type: 'SELL',
@@ -81,7 +91,7 @@ createTradeWithValidation(validateTradeInput({
   ]
 }));
 
-const msftBuy1 = createTradeWithValidation(validateTradeInput({
+const msftBuy1 = createTradeWithValidation(demoUserId, validateTradeInput({
   ticker: 'MSFT',
   tradeDate: '2025-01-28',
   type: 'BUY',
@@ -91,7 +101,7 @@ const msftBuy1 = createTradeWithValidation(validateTradeInput({
   notes: 'Cloud leader'
 }));
 
-createTradeWithValidation(validateTradeInput({
+createTradeWithValidation(demoUserId, validateTradeInput({
   ticker: 'MSFT',
   tradeDate: '2025-02-25',
   type: 'SELL',
@@ -102,7 +112,7 @@ createTradeWithValidation(validateTradeInput({
   lotSelectionMethod: 'FIFO'
 }));
 
-createTradeWithValidation(validateTradeInput({
+createTradeWithValidation(demoUserId, validateTradeInput({
   ticker: 'MSFT',
   tradeDate: '2025-03-20',
   type: 'BUY',
@@ -112,4 +122,4 @@ createTradeWithValidation(validateTradeInput({
   notes: 'Reload after pullback'
 }));
 
-console.log(`Seeded trades with allocation support. Example buy trade ids: AAPL ${aaplBuy.id}, NVDA ${nvdaBuy1.id}/${nvdaBuy2.id}, MSFT ${msftBuy1.id}`);
+console.log(`Seeded demo user ${demoEmail} / ${demoPassword}. Example buy trade ids: AAPL ${aaplBuy.id}, NVDA ${nvdaBuy1.id}/${nvdaBuy2.id}, MSFT ${msftBuy1.id}`);

@@ -6,10 +6,32 @@ import { createApp } from '../app.js';
 import { validateTradeInput } from '../lib/validation.js';
 import { createTradeWithValidation, resetTrades } from '../services.js';
 
+type AuthPayload = {
+  token: string;
+  user: { id: number; email: string };
+};
+
 async function startTestServer() {
   resetTrades();
+  const app = createApp();
+  const server = createServer(app);
+  server.listen(0);
+  await once(server, 'listening');
 
-  const aaplBuyOne = createTradeWithValidation(validateTradeInput({
+  const address = server.address();
+  if (!address || typeof address === 'string') {
+    throw new Error('Failed to resolve test server address');
+  }
+
+  const baseUrl = `http://127.0.0.1:${address.port}`;
+  const registerResponse = await fetch(`${baseUrl}/api/auth/register`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: 'analytics@example.com', password: 'Password123!', name: 'Analytics User' })
+  });
+  const auth = await registerResponse.json() as AuthPayload;
+
+  const aaplBuyOne = createTradeWithValidation(auth.user.id, validateTradeInput({
     ticker: 'AAPL',
     tradeDate: '2026-01-03',
     type: 'BUY',
@@ -18,7 +40,7 @@ async function startTestServer() {
     fee: 1
   }));
 
-  const aaplBuyTwo = createTradeWithValidation(validateTradeInput({
+  const aaplBuyTwo = createTradeWithValidation(auth.user.id, validateTradeInput({
     ticker: 'AAPL',
     tradeDate: '2026-01-10',
     type: 'BUY',
@@ -27,7 +49,7 @@ async function startTestServer() {
     fee: 1
   }));
 
-  const aaplSell = createTradeWithValidation(validateTradeInput({
+  const aaplSell = createTradeWithValidation(auth.user.id, validateTradeInput({
     ticker: 'AAPL',
     tradeDate: '2026-02-10',
     type: 'SELL',
@@ -41,7 +63,7 @@ async function startTestServer() {
     ]
   }));
 
-  createTradeWithValidation(validateTradeInput({
+  createTradeWithValidation(auth.user.id, validateTradeInput({
     ticker: 'MSFT',
     tradeDate: '2026-01-15',
     type: 'BUY',
@@ -50,19 +72,10 @@ async function startTestServer() {
     fee: 1
   }));
 
-  const app = createApp();
-  const server = createServer(app);
-  server.listen(0);
-  await once(server, 'listening');
-
-  const address = server.address();
-  if (!address || typeof address === 'string') {
-    throw new Error('Failed to resolve test server address');
-  }
-
   return {
     server,
-    baseUrl: `http://127.0.0.1:${address.port}`,
+    baseUrl,
+    token: auth.token,
     ids: {
       aaplBuyOneId: aaplBuyOne.id,
       aaplBuyTwoId: aaplBuyTwo.id,
@@ -72,9 +85,11 @@ async function startTestServer() {
 }
 
 test('GET /api/dashboard returns stable analytics payload', async () => {
-  const { server, baseUrl } = await startTestServer();
+  const { server, baseUrl, token } = await startTestServer();
 
-  const response = await fetch(`${baseUrl}/api/dashboard`);
+  const response = await fetch(`${baseUrl}/api/dashboard`, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
   const payload = await response.json();
 
   assert.equal(response.status, 200);
@@ -96,9 +111,11 @@ test('GET /api/dashboard returns stable analytics payload', async () => {
 });
 
 test('GET /api/realized returns allocation-based grouped sell records', async () => {
-  const { server, baseUrl, ids } = await startTestServer();
+  const { server, baseUrl, token, ids } = await startTestServer();
 
-  const response = await fetch(`${baseUrl}/api/realized`);
+  const response = await fetch(`${baseUrl}/api/realized`, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
   const payload = await response.json();
 
   assert.equal(response.status, 200);
@@ -120,9 +137,11 @@ test('GET /api/realized returns allocation-based grouped sell records', async ()
 });
 
 test('GET /api/positions reflects remaining open lots after allocations', async () => {
-  const { server, baseUrl } = await startTestServer();
+  const { server, baseUrl, token } = await startTestServer();
 
-  const response = await fetch(`${baseUrl}/api/positions`);
+  const response = await fetch(`${baseUrl}/api/positions`, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
   const payload = await response.json();
 
   assert.equal(response.status, 200);

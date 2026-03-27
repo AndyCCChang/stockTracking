@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { toCsv } from '../lib/csv.js';
 import { validateSummaryYear } from '../lib/validation.js';
+import { authenticateJWT } from '../middleware/authenticateJWT.js';
 import {
   getDashboardAnalytics,
   getMonthlySummaryAnalytics,
@@ -12,17 +13,19 @@ import {
 
 const router = Router();
 
-router.get('/dashboard', async (_req, res, next) => {
+router.use(authenticateJWT);
+
+router.get('/dashboard', async (req, res, next) => {
   try {
-    res.json(await getDashboardAnalytics());
+    res.json(await getDashboardAnalytics(req.user!.userId));
   } catch (error) {
     next(error);
   }
 });
 
-router.get('/positions', async (_req, res, next) => {
+router.get('/positions', async (req, res, next) => {
   try {
-    res.json(await getPositionsAnalytics());
+    res.json(await getPositionsAnalytics(req.user!.userId));
   } catch (error) {
     next(error);
   }
@@ -30,7 +33,7 @@ router.get('/positions', async (_req, res, next) => {
 
 router.get('/realized', (req, res, next) => {
   try {
-    res.json(getRealizedAnalytics());
+    res.json(getRealizedAnalytics(req.user!.userId));
   } catch (error) {
     next(error);
   }
@@ -38,15 +41,15 @@ router.get('/realized', (req, res, next) => {
 
 router.get('/performance', (req, res, next) => {
   try {
-    res.json(getPerformanceAnalytics());
+    res.json(getPerformanceAnalytics(req.user!.userId));
   } catch (error) {
     next(error);
   }
 });
 
-router.get('/yearly-summary/export', async (_req, res, next) => {
+router.get('/yearly-summary/export', async (req, res, next) => {
   try {
-    const yearlySummary = await getYearlySummaryAnalytics();
+    const yearlySummary = await getYearlySummaryAnalytics(req.user!.userId);
     const csv = toCsv(
       ['year', 'realizedPnL', 'unrealizedPnL', 'tradeCount', 'grossBuyAmount', 'grossSellAmount', 'returnRate'],
       yearlySummary.map((item) => ({
@@ -67,9 +70,9 @@ router.get('/yearly-summary/export', async (_req, res, next) => {
   }
 });
 
-router.get('/yearly-summary', async (_req, res, next) => {
+router.get('/yearly-summary', async (req, res, next) => {
   try {
-    res.json(await getYearlySummaryAnalytics());
+    res.json(await getYearlySummaryAnalytics(req.user!.userId));
   } catch (error) {
     next(error);
   }
@@ -78,7 +81,7 @@ router.get('/yearly-summary', async (_req, res, next) => {
 router.get('/monthly-summary', async (req, res, next) => {
   try {
     const year = validateSummaryYear(typeof req.query.year === 'string' ? req.query.year : undefined);
-    res.json(await getMonthlySummaryAnalytics(year));
+    res.json(await getMonthlySummaryAnalytics(req.user!.userId, year));
   } catch (error) {
     next(error);
   }

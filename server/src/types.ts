@@ -20,6 +20,46 @@ export type LotSelectionMethod = (typeof LOT_SELECTION_METHODS)[number];
 export type TradeSortField = (typeof TRADE_SORT_FIELDS)[number];
 export type SortOrder = 'asc' | 'desc';
 
+export type UserRecord = {
+  id: number;
+  email: string;
+  passwordHash: string;
+  name: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type PublicUser = {
+  id: number;
+  email: string;
+  name: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type AuthTokenPayload = {
+  userId: number;
+  email: string;
+};
+
+export type AuthenticatedRequestUser = AuthTokenPayload;
+
+export type RegisterInput = {
+  email: string;
+  password: string;
+  name?: string | null;
+};
+
+export type LoginInput = {
+  email: string;
+  password: string;
+};
+
+export type AuthResponse = {
+  token: string;
+  user: PublicUser;
+};
+
 export type TradeLotAllocationInput = {
   buyTradeId: number;
   quantity: number;

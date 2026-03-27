@@ -3,6 +3,30 @@ import axios from 'axios';
 export type TradeType = 'BUY' | 'SELL';
 export type LotSelectionMethod = 'FIFO' | 'SPECIFIC';
 
+export type AuthUser = {
+  id: number;
+  email: string;
+  name: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type RegisterPayload = {
+  email: string;
+  password: string;
+  name?: string;
+};
+
+export type LoginPayload = {
+  email: string;
+  password: string;
+};
+
+export type AuthResponse = {
+  token: string;
+  user: AuthUser;
+};
+
 export type HealthResponse = {
   status: 'ok';
   service: string;
@@ -215,6 +239,28 @@ const api = axios.create({
   timeout: 5000
 });
 
+let authToken: string | null = null;
+let unauthorizedHandler: ((message: string) => void) | null = null;
+
+api.interceptors.request.use((config) => {
+  if (authToken) {
+    config.headers = config.headers ?? {};
+    config.headers.Authorization = `Bearer ${authToken}`;
+  }
+  return config;
+});
+
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (axios.isAxiosError(error) && error.response?.status === 401 && unauthorizedHandler) {
+      unauthorizedHandler(normalizeErrorMessage(error));
+    }
+
+    return Promise.reject(error);
+  }
+);
+
 function normalizeErrorMessage(error: unknown) {
   if (axios.isAxiosError(error)) {
     const apiMessage = error.response?.data?.message;
@@ -230,12 +276,41 @@ function normalizeErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : 'Request failed';
 }
 
-export function getTradesExportUrl() {
-  return '/api/trades/export';
+function triggerBlobDownload(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
 }
 
-export function getYearlySummaryExportUrl() {
-  return '/api/yearly-summary/export';
+export function setAuthToken(token: string | null) {
+  authToken = token;
+}
+
+export function setUnauthorizedHandler(handler: ((message: string) => void) | null) {
+  unauthorizedHandler = handler;
+}
+
+export async function register(payload: RegisterPayload) {
+  try {
+    const { data } = await api.post<AuthResponse>('/auth/register', payload);
+    return data;
+  } catch (error) {
+    throw new Error(normalizeErrorMessage(error));
+  }
+}
+
+export async function login(payload: LoginPayload) {
+  try {
+    const { data } = await api.post<AuthResponse>('/auth/login', payload);
+    return data;
+  } catch (error) {
+    throw new Error(normalizeErrorMessage(error));
+  }
 }
 
 export async function fetchHealth() {
@@ -309,6 +384,24 @@ export async function importTrades(rows: CsvTradeImportRow[]) {
   try {
     const { data } = await api.post<CsvTradeImportResult>('/trades/import', { rows });
     return data;
+  } catch (error) {
+    throw new Error(normalizeErrorMessage(error));
+  }
+}
+
+export async function downloadTradesCsv() {
+  try {
+    const { data } = await api.get<Blob>('/trades/export', { responseType: 'blob' });
+    triggerBlobDownload(data, 'trades-export.csv');
+  } catch (error) {
+    throw new Error(normalizeErrorMessage(error));
+  }
+}
+
+export async function downloadYearlySummaryCsv() {
+  try {
+    const { data } = await api.get<Blob>('/yearly-summary/export', { responseType: 'blob' });
+    triggerBlobDownload(data, 'yearly-summary.csv');
   } catch (error) {
     throw new Error(normalizeErrorMessage(error));
   }

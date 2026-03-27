@@ -3,11 +3,11 @@ import dayjs from 'dayjs';
 import {
   createTrade,
   deleteTrade,
+  downloadTradesCsv,
+  downloadYearlySummaryCsv,
   fetchAvailableLots,
   fetchLatestPrice,
   fetchTrades,
-  getTradesExportUrl,
-  getYearlySummaryExportUrl,
   importTrades,
   updateTrade,
   type AvailableLot,
@@ -660,6 +660,25 @@ export function TradesPage() {
     }
   }
 
+
+  async function handleTradesExport() {
+    try {
+      setCsvError(null);
+      await downloadTradesCsv();
+    } catch (error) {
+      setCsvError(error instanceof Error ? error.message : 'Trades export failed');
+    }
+  }
+
+  async function handleYearlyExport() {
+    try {
+      setCsvError(null);
+      await downloadYearlySummaryCsv();
+    } catch (error) {
+      setCsvError(error instanceof Error ? error.message : 'Yearly export failed');
+    }
+  }
+
   return (
     <section className="space-y-6">
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -939,18 +958,20 @@ export function TradesPage() {
             >
               Upload CSV
             </button>
-            <a
-              href={getTradesExportUrl()}
+            <button
+              type="button"
+              onClick={() => void handleTradesExport()}
               className="rounded-full border border-white/10 px-4 py-2 text-sm font-medium text-slate-200 transition hover:text-white"
             >
               Export Trades CSV
-            </a>
-            <a
-              href={getYearlySummaryExportUrl()}
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleYearlyExport()}
               className="rounded-full border border-white/10 px-4 py-2 text-sm font-medium text-slate-200 transition hover:text-white"
             >
               Export Yearly CSV
-            </a>
+            </button>
           </div>
         </div>
 

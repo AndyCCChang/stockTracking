@@ -22,6 +22,27 @@ export class ValidationError extends AppError {
   }
 }
 
+export class UnauthorizedError extends AppError {
+  constructor(message = 'Authentication required') {
+    super(message, 401);
+    this.name = 'UnauthorizedError';
+  }
+}
+
+export class ForbiddenError extends AppError {
+  constructor(message = 'You do not have permission to perform this action') {
+    super(message, 403);
+    this.name = 'ForbiddenError';
+  }
+}
+
+export class ConflictError extends AppError {
+  constructor(message: string) {
+    super(message, 409);
+    this.name = 'ConflictError';
+  }
+}
+
 export class InsufficientPositionError extends AppError {
   constructor(message: string) {
     super(message, 400);

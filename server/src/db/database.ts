@@ -2,12 +2,14 @@ import Database from 'better-sqlite3';
 import { existsSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { tradeTableSchema } from './schema.js';
+import { tradeTableSchema, userTableSchema } from './schema.js';
 
 const currentDir = path.dirname(fileURLToPath(import.meta.url));
 const serverRoot = path.resolve(currentDir, '../..');
 const dataDir = path.join(serverRoot, 'data');
 const databaseFile = path.join(dataDir, 'stock-tracking.sqlite');
+const LEGACY_USER_EMAIL = 'legacy@stock-tracking.local';
+const LEGACY_PASSWORD_HASH = 'legacy-user-disabled';
 
 mkdirSync(dataDir, { recursive: true });
 
@@ -36,11 +38,40 @@ type OpenBuyLot = {
   price: number;
 };
 
+function hasTradeColumn(columnName: string) {
+  const columns = db.prepare('PRAGMA table_info(trades)').all() as Array<{ name: string }>;
+  return columns.some((column) => column.name === columnName);
+}
+
 function ensureTradeColumn(columnName: string, statement: string) {
-  const columns = db.prepare("PRAGMA table_info(trades)").all() as Array<{ name: string }>;
-  if (!columns.some((column) => column.name === columnName)) {
+  if (!hasTradeColumn(columnName)) {
     db.exec(statement);
   }
+}
+
+function ensureLegacyUser() {
+  const existing = db.prepare('SELECT id FROM users WHERE email = ?').get(LEGACY_USER_EMAIL) as { id: number } | undefined;
+  if (existing) {
+    return Number(existing.id);
+  }
+
+  const now = new Date().toISOString();
+  const result = db.prepare(
+    `INSERT INTO users (email, passwordHash, name, createdAt, updatedAt)
+     VALUES (?, ?, ?, ?, ?)`
+  ).run(LEGACY_USER_EMAIL, LEGACY_PASSWORD_HASH, 'Legacy Seed User', now, now);
+
+  return Number(result.lastInsertRowid);
+}
+
+function ensureTradeUserIdColumn() {
+  if (!hasTradeColumn('userId')) {
+    db.exec('ALTER TABLE trades ADD COLUMN userId INTEGER');
+  }
+
+  const legacyUserId = ensureLegacyUser();
+  db.prepare('UPDATE trades SET userId = ? WHERE userId IS NULL').run(legacyUserId);
+  db.exec('CREATE INDEX IF NOT EXISTS idx_trades_user_id ON trades(userId)');
 }
 
 function backfillLegacyAllocations() {
@@ -100,11 +131,13 @@ export function initializeDatabase() {
       value TEXT NOT NULL
     );
   `);
+  db.exec(userTableSchema);
   db.exec(tradeTableSchema);
   ensureTradeColumn(
     'lotSelectionMethod',
     "ALTER TABLE trades ADD COLUMN lotSelectionMethod TEXT NOT NULL DEFAULT 'FIFO'"
   );
+  ensureTradeUserIdColumn();
   db.prepare(
     `INSERT INTO app_meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`
   ).run('initializedAt', new Date().toISOString());

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { getAllTradeAllocations, getTradeById } from '../db/tradeRepository.js';
+import { createUser } from '../db/userRepository.js';
 import { InsufficientPositionError, ValidationError } from './errors.js';
 import {
   buildAllocationPlan,
@@ -31,6 +32,15 @@ function createTrade(overrides: Partial<TradeRecord>): TradeRecord {
     updatedAt: overrides.updatedAt ?? `${tradeDate}T09:30:00.000Z`,
     allocations: overrides.allocations ?? []
   };
+}
+
+
+function createTestUserId() {
+  return createUser({
+    email: `test-${Date.now()}-${Math.random().toString(16).slice(2)}@example.com`,
+    passwordHash: 'test-password-hash',
+    name: 'Test User'
+  });
 }
 
 function allocationRow(overrides: Partial<TradeLotAllocationRecord>): TradeLotAllocationRecord {
@@ -137,8 +147,9 @@ test('Realized pnl is calculated from persisted allocations', () => {
 
 test('Updating SELL rebuilds allocations correctly', () => {
   resetTrades();
+  const userId = createTestUserId();
 
-  const buy1 = createTradeWithValidation(validateTradeInput({
+  const buy1 = createTradeWithValidation(userId, validateTradeInput({
     ticker: 'MSFT',
     tradeDate: '2025-01-01',
     type: 'BUY',
@@ -146,7 +157,7 @@ test('Updating SELL rebuilds allocations correctly', () => {
     price: 100,
     fee: 0
   }));
-  const buy2 = createTradeWithValidation(validateTradeInput({
+  const buy2 = createTradeWithValidation(userId, validateTradeInput({
     ticker: 'MSFT',
     tradeDate: '2025-01-02',
     type: 'BUY',
@@ -154,7 +165,7 @@ test('Updating SELL rebuilds allocations correctly', () => {
     price: 110,
     fee: 0
   }));
-  const sell = createTradeWithValidation(validateTradeInput({
+  const sell = createTradeWithValidation(userId, validateTradeInput({
     ticker: 'MSFT',
     tradeDate: '2025-01-10',
     type: 'SELL',
@@ -164,7 +175,7 @@ test('Updating SELL rebuilds allocations correctly', () => {
     lotSelectionMethod: 'FIFO'
   }));
 
-  const updated = updateTradeWithValidation(sell.id, validateTradeInput({
+  const updated = updateTradeWithValidation(userId, sell.id, validateTradeInput({
     ticker: 'MSFT',
     tradeDate: '2025-01-10',
     type: 'SELL',
@@ -175,8 +186,8 @@ test('Updating SELL rebuilds allocations correctly', () => {
     allocations: [{ buyTradeId: buy2.id, quantity: 4 }]
   }));
 
-  const refreshed = getTradeById(updated.id);
-  const allocations = getAllTradeAllocations().filter((item) => item.sellTradeId === updated.id);
+  const refreshed = getTradeById(userId, updated.id);
+  const allocations = getAllTradeAllocations(userId).filter((item) => item.sellTradeId === updated.id);
   const positions = calculateOpenPositionsFromLots([buy1, buy2, updated], allocations);
 
   assert.equal(refreshed?.lotSelectionMethod, 'SPECIFIC');
