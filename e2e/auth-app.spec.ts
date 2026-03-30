@@ -160,6 +160,31 @@ test('authenticated user can create a SPECIFIC lot sell from the trades page', a
   await expect(sellRow).toContainText('SPECIFIC');
 });
 
+test('authenticated user can import trades from CSV', async ({ page }) => {
+  await login(page);
+  await goToTrades(page);
+
+  const ticker = `CSV${Date.now().toString().slice(-4)}`;
+  const csv = [
+    'ticker,tradeDate,type,quantity,price,fee,notes,currency,lotSelectionMethod',
+    `${ticker},2026-03-20,BUY,4,210.5,1,csv import smoke,USD,FIFO`
+  ].join('\n');
+
+  await page.locator('input[type="file"]').setInputFiles({
+    name: 'trades-import.csv',
+    mimeType: 'text/csv',
+    buffer: Buffer.from(csv)
+  });
+
+  await expect(page.getByText('Import Preview')).toBeVisible();
+  await expect(page.getByText('File: trades-import.csv')).toBeVisible();
+  await expect(page.getByRole('cell', { name: ticker })).toBeVisible();
+  await page.getByRole('button', { name: 'Import Ready Rows' }).click();
+
+  await expect(page.getByText('Imported 1 trades successfully.')).toBeVisible();
+  await expect(page.getByRole('cell', { name: ticker }).first()).toBeVisible();
+});
+
 test('authenticated user can logout and is redirected to login', async ({ page }) => {
   await login(page);
   await page.getByRole('button', { name: 'Logout' }).click();
