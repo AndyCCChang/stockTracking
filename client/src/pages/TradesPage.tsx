@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent } from 'react';
+import { createPortal } from 'react-dom';
 import dayjs from 'dayjs';
 import {
   createTrade,
@@ -49,6 +50,35 @@ type CsvPreviewRow = {
 
 const QUANTITY_EPSILON = 0.000001;
 const REQUIRED_CSV_COLUMNS = ['ticker', 'tradeDate', 'type', 'quantity', 'price'];
+const JSON_IMPORT_EXAMPLE = `{
+  "rows": [
+    {
+      "importRef": "AAPL-LOT-1",
+      "ticker": "AAPL",
+      "tradeDate": "2026-03-18",
+      "type": "BUY",
+      "quantity": 5,
+      "price": 180,
+      "fee": 1,
+      "notes": "json buy",
+      "currency": "USD"
+    },
+    {
+      "ticker": "AAPL",
+      "tradeDate": "2026-03-20",
+      "type": "SELL",
+      "quantity": 2,
+      "price": 210,
+      "fee": 1,
+      "notes": "json specific sell",
+      "currency": "USD",
+      "lotSelectionMethod": "SPECIFIC",
+      "allocations": [
+        { "buyTradeRef": "AAPL-LOT-1", "quantity": 2 }
+      ]
+    }
+  ]
+}`;
 
 function createDefaultFormState(): TradeFormState {
   return {
@@ -203,6 +233,154 @@ function buildCsvPreviewRow(source: Record<string, string>, rowNumber: number): 
   }
 }
 
+function buildJsonPreviewRow(row: unknown, rowNumber: number): CsvPreviewRow {
+  if (!row || typeof row !== 'object' || Array.isArray(row)) {
+    return {
+      rowNumber,
+      status: 'error',
+      source: {},
+      error: `Row ${rowNumber}: JSON row must be an object`
+    };
+  }
+
+  try {
+    const record = row as Record<string, unknown>;
+    const type = typeof record.type === 'string' ? record.type.trim().toUpperCase() : '';
+    if (type !== 'BUY' && type !== 'SELL') {
+      throw new Error(`Row ${rowNumber}: type must be BUY or SELL`);
+    }
+
+    const ticker = typeof record.ticker === 'string' ? record.ticker.trim().toUpperCase() : '';
+    if (ticker.length === 0) {
+      throw new Error(`Row ${rowNumber}: ticker is required`);
+    }
+
+    const tradeDate = typeof record.tradeDate === 'string' ? record.tradeDate.trim() : '';
+    if (!dayjs(tradeDate).isValid()) {
+      throw new Error(`Row ${rowNumber}: tradeDate must be valid`);
+    }
+
+    const quantity = Number(record.quantity);
+    if (!Number.isFinite(quantity) || quantity <= 0) {
+      throw new Error(`Row ${rowNumber}: quantity must be greater than 0`);
+    }
+
+    const price = Number(record.price);
+    if (!Number.isFinite(price) || price <= 0) {
+      throw new Error(`Row ${rowNumber}: price must be greater than 0`);
+    }
+
+    const fee = record.fee == null || record.fee === '' ? 0 : Number(record.fee);
+    if (!Number.isFinite(fee) || fee < 0) {
+      throw new Error(`Row ${rowNumber}: fee must be 0 or greater`);
+    }
+
+    const lotSelectionMethod = type === 'SELL' && String(record.lotSelectionMethod ?? '').trim().toUpperCase() === 'SPECIFIC'
+      ? 'SPECIFIC'
+      : 'FIFO';
+
+    const allocations = Array.isArray(record.allocations)
+      ? record.allocations.map((item, index) => {
+          if (!item || typeof item !== 'object') {
+            throw new Error(`Row ${rowNumber}: allocation ${index + 1} must be an object`);
+          }
+
+          const allocation = item as Record<string, unknown>;
+          const allocationQuantity = Number(allocation.quantity);
+          if (!Number.isFinite(allocationQuantity) || allocationQuantity <= 0) {
+            throw new Error(`Row ${rowNumber}: allocation ${index + 1} quantity must be greater than 0`);
+          }
+
+          const buyTradeId = allocation.buyTradeId == null || allocation.buyTradeId === '' ? undefined : Number.parseInt(String(allocation.buyTradeId), 10);
+          const buyTradeRef = typeof allocation.buyTradeRef === 'string' && allocation.buyTradeRef.trim().length > 0 ? allocation.buyTradeRef.trim() : undefined;
+          if ((buyTradeId == null || !Number.isInteger(buyTradeId) || buyTradeId <= 0) && !buyTradeRef) {
+            throw new Error(`Row ${rowNumber}: allocation ${index + 1} requires buyTradeId or buyTradeRef`);
+          }
+
+          return {
+            buyTradeId: buyTradeId && buyTradeId > 0 ? buyTradeId : undefined,
+            buyTradeRef,
+            quantity: allocationQuantity
+          } satisfies CsvTradeAllocationInput;
+        })
+      : undefined;
+
+    if (type === 'SELL' && lotSelectionMethod === 'SPECIFIC' && (!allocations || allocations.length === 0)) {
+      throw new Error(`Row ${rowNumber}: SPECIFIC SELL requires allocations`);
+    }
+
+    return {
+      rowNumber,
+      status: 'ready',
+      source: {
+        importRef: typeof record.importRef === 'string' ? record.importRef : '',
+        ticker,
+        tradeDate,
+        type,
+        quantity: String(quantity),
+        price: String(price),
+        fee: String(fee),
+        notes: typeof record.notes === 'string' ? record.notes : '',
+        currency: typeof record.currency === 'string' ? record.currency.toUpperCase() : 'USD',
+        lotSelectionMethod,
+        allocations: allocations ? JSON.stringify(allocations) : ''
+      },
+      parsed: {
+        importRef: typeof record.importRef === 'string' && record.importRef.trim().length > 0 ? record.importRef.trim() : undefined,
+        ticker,
+        tradeDate,
+        type: type as TradeType,
+        quantity,
+        price,
+        fee,
+        notes: typeof record.notes === 'string' ? record.notes.trim() || null : record.notes == null ? null : String(record.notes),
+        currency: typeof record.currency === 'string' && record.currency.trim() ? record.currency.trim().toUpperCase() : 'USD',
+        lotSelectionMethod,
+        allocations
+      }
+    };
+  } catch (error) {
+    return {
+      rowNumber,
+      status: 'error',
+      source: {},
+      error: error instanceof Error ? error.message : `Row ${rowNumber}: invalid JSON data`
+    };
+  }
+}
+
+function parseJsonImportPayload(text: string): CsvTradeImportRow[] {
+  if (text.trim().length === 0) {
+    throw new Error('JSON import text is empty');
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    throw new Error('JSON import text must be valid JSON');
+  }
+
+  const rows = Array.isArray(parsed)
+    ? parsed
+    : parsed && typeof parsed === 'object' && Array.isArray((parsed as { rows?: unknown }).rows)
+      ? (parsed as { rows: unknown[] }).rows
+      : null;
+
+  if (!rows || rows.length === 0) {
+    throw new Error('JSON payload must be an array of rows or an object with a non-empty rows array');
+  }
+
+  const previewRows = rows.map((row, index) => buildJsonPreviewRow(row, index + 1));
+  const firstError = previewRows.find((row) => row.status === 'error');
+  if (firstError?.error) {
+    throw new Error(firstError.error);
+  }
+
+  return previewRows.map((row) => row.parsed as CsvTradeImportRow);
+}
+
+
 export function TradesPage() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const tradeDateInputRef = useRef<HTMLInputElement | null>(null);
@@ -222,6 +400,11 @@ export function TradesPage() {
   const [csvError, setCsvError] = useState<string | null>(null);
   const [csvMessage, setCsvMessage] = useState<string | null>(null);
   const [isImportingCsv, setIsImportingCsv] = useState(false);
+  const [jsonImportText, setJsonImportText] = useState('');
+  const [jsonImportError, setJsonImportError] = useState<string | null>(null);
+  const [jsonImportMessage, setJsonImportMessage] = useState<string | null>(null);
+  const [isImportingJson, setIsImportingJson] = useState(false);
+  const [isJsonEditorOpen, setIsJsonEditorOpen] = useState(false);
   const [priceLookupLoading, setPriceLookupLoading] = useState(false);
   const [priceLookupError, setPriceLookupError] = useState<string | null>(null);
   const [latestPriceInfo, setLatestPriceInfo] = useState<string | null>(null);
@@ -253,6 +436,19 @@ export function TradesPage() {
   useEffect(() => {
     void loadTrades();
   }, []);
+
+  useEffect(() => {
+    if (!isJsonEditorOpen) {
+      return;
+    }
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [isJsonEditorOpen]);
 
   useEffect(() => {
     if (!isSpecific) {
@@ -592,6 +788,60 @@ export function TradesPage() {
       setFormError(error instanceof Error ? error.message : 'Failed to save trade');
     } finally {
       setIsSubmitting(false);
+    }
+  }
+
+  function resetJsonImport(preserveText = false) {
+    if (!preserveText) {
+      setJsonImportText('');
+    }
+    setJsonImportError(null);
+    setJsonImportMessage(null);
+  }
+
+  function handleLoadJsonExample() {
+    setJsonImportText(JSON_IMPORT_EXAMPLE);
+    setJsonImportError(null);
+    setJsonImportMessage('Loaded sample JSON payload. You can edit it before importing.');
+  }
+
+  function handleFormatJson() {
+    try {
+      const rows = parseJsonImportPayload(jsonImportText);
+      setJsonImportText(JSON.stringify({ rows }, null, 2));
+      setJsonImportError(null);
+      setJsonImportMessage(`Formatted JSON payload with ${rows.length} row${rows.length === 1 ? '' : 's'}.`);
+    } catch (error) {
+      setJsonImportError(error instanceof Error ? error.message : 'Unable to format JSON payload');
+      setJsonImportMessage(null);
+    }
+  }
+
+  function handlePreviewJson() {
+    try {
+      const rows = parseJsonImportPayload(jsonImportText);
+      setJsonImportError(null);
+      setJsonImportMessage(`JSON payload is valid with ${rows.length} row${rows.length === 1 ? '' : 's'} ready to import.`);
+    } catch (error) {
+      setJsonImportError(error instanceof Error ? error.message : 'Unable to preview JSON payload');
+      setJsonImportMessage(null);
+    }
+  }
+
+  async function handleJsonImport() {
+    try {
+      const rows = parseJsonImportPayload(jsonImportText);
+      setIsImportingJson(true);
+      const result = await importTrades(rows);
+      await loadTrades();
+      setJsonImportError(null);
+      setJsonImportMessage(`Imported ${result.importedCount} trades successfully from JSON.`);
+      setJsonImportText('');
+    } catch (error) {
+      setJsonImportError(error instanceof Error ? error.message : 'JSON import failed');
+      setJsonImportMessage(null);
+    } finally {
+      setIsImportingJson(false);
     }
   }
 
@@ -1069,8 +1319,170 @@ export function TradesPage() {
             </button>
           </aside>
         </div>
+
+        <div className="mt-6 rounded-3xl border border-white/10 bg-white/5 p-5">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div className="max-w-3xl">
+              <p className="text-sm font-medium text-white">JSON Editor Import</p>
+              <p className="mt-1 text-sm text-slate-400">Open a large modal editor to paste, tweak, preview, and import trade JSON directly without squeezing the payload into the page layout.</p>
+            </div>
+            <div className="flex flex-wrap gap-3">
+              <button
+                type="button"
+                onClick={() => setIsJsonEditorOpen(true)}
+                className="rounded-full bg-emerald-400 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-emerald-300"
+              >
+                Open JSON Editor
+              </button>
+              <button
+                type="button"
+                onClick={handleLoadJsonExample}
+                className="rounded-full border border-emerald-300/30 bg-emerald-400/10 px-4 py-2 text-sm font-medium text-emerald-200 transition hover:bg-emerald-400/20"
+              >
+                Load JSON Example
+              </button>
+            </div>
+          </div>
+
+          {jsonImportError ? (
+            <div className="mt-4 rounded-2xl border border-rose-400/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">{jsonImportError}</div>
+          ) : null}
+          {jsonImportMessage ? (
+            <div className="mt-4 rounded-2xl border border-emerald-400/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">{jsonImportMessage}</div>
+          ) : null}
+
+          <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(280px,0.42fr)]">
+            <div className="rounded-2xl border border-white/10 bg-slate-950/35 p-4">
+              <p className="text-xs uppercase tracking-[0.22em] text-slate-500">Current Payload</p>
+              <div className="mt-3 rounded-2xl border border-white/10 bg-slate-950/60 p-4">
+                <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-words font-mono text-xs text-slate-200">
+                  {jsonImportText.trim().length > 0 ? jsonImportText : 'No JSON payload loaded yet.'}
+                </pre>
+              </div>
+            </div>
+
+            <aside className="rounded-2xl border border-white/10 bg-slate-950/35 p-4">
+              <h3 className="text-base font-semibold text-white">JSON Notes</h3>
+              <div className="mt-4 space-y-3 text-sm text-slate-300">
+                <p>Accepted shapes:</p>
+                <code className="block whitespace-pre-wrap rounded-2xl border border-white/10 bg-white/5 p-3 text-xs text-emerald-200">[{`{"ticker":"AAPL",...}`}]</code>
+                <code className="block whitespace-pre-wrap rounded-2xl border border-white/10 bg-white/5 p-3 text-xs text-emerald-200">{`{"rows":[{"ticker":"AAPL",...}]}`}</code>
+                <p>For SPECIFIC SELL imports, allocations can use either buyTradeId or buyTradeRef.</p>
+                <p>Use the modal editor when you need full-screen editing space for larger import payloads.</p>
+              </div>
+            </aside>
+          </div>
+        </div>
       </section>
 
+      {isJsonEditorOpen
+        ? createPortal(
+            <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/85 px-4 py-6 backdrop-blur-sm" onClick={() => setIsJsonEditorOpen(false)}>
+              <div
+                className="flex h-[min(92vh,920px)] w-full max-w-6xl flex-col overflow-hidden rounded-3xl border border-white/10 bg-slate-950 shadow-2xl shadow-black/50"
+                onClick={(event) => event.stopPropagation()}
+              >
+                <div className="flex flex-col gap-4 border-b border-white/10 px-5 py-4 lg:flex-row lg:items-start lg:justify-between">
+                  <div className="max-w-3xl">
+                    <h3 className="text-xl font-semibold text-white">JSON Editor Import</h3>
+                    <p className="mt-1 text-sm text-slate-400">Edit trade rows in a larger workspace, preview the payload, then import directly into your ledger.</p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={handleLoadJsonExample}
+                      className="rounded-full border border-emerald-300/30 bg-emerald-400/10 px-3 py-1.5 text-xs font-medium text-emerald-200 transition hover:bg-emerald-400/20"
+                    >
+                      Load JSON Example
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleFormatJson}
+                      className="rounded-full border border-white/10 px-3 py-1.5 text-xs font-medium text-slate-300 transition hover:text-white"
+                    >
+                      Format JSON
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => resetJsonImport()}
+                      className="rounded-full border border-white/10 px-3 py-1.5 text-xs font-medium text-slate-300 transition hover:text-white"
+                    >
+                      Clear JSON
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setIsJsonEditorOpen(false)}
+                      className="rounded-full border border-white/10 px-3 py-1.5 text-xs font-medium text-slate-300 transition hover:text-white"
+                    >
+                      Close
+                    </button>
+                  </div>
+                </div>
+
+                <div className="grid min-h-0 flex-1 gap-4 overflow-hidden p-5 xl:grid-cols-[minmax(0,0.78fr)_minmax(300px,0.22fr)]">
+                  <div className="flex min-h-0 flex-col rounded-2xl border border-white/10 bg-slate-950/35 p-4">
+                    {jsonImportError ? (
+                      <div className="rounded-2xl border border-rose-400/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">{jsonImportError}</div>
+                    ) : null}
+                    {jsonImportMessage ? (
+                      <div className="mt-4 rounded-2xl border border-emerald-400/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">{jsonImportMessage}</div>
+                    ) : null}
+
+                    <label className="mt-4 flex min-h-0 flex-1 flex-col space-y-2 text-sm text-slate-300">
+                      <span>JSON Payload</span>
+                      <textarea
+                        value={jsonImportText}
+                        onChange={(event) => {
+                          setJsonImportText(event.target.value);
+                          if (jsonImportError) {
+                            setJsonImportError(null);
+                          }
+                          if (jsonImportMessage) {
+                            setJsonImportMessage(null);
+                          }
+                        }}
+                        rows={28}
+                        placeholder='Paste {"rows":[...]} or [...] here'
+                        className="min-h-0 flex-1 resize-none rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3 font-mono text-sm text-white outline-none transition focus:border-emerald-300/40"
+                      />
+                    </label>
+
+                    <div className="mt-4 flex flex-wrap gap-3">
+                      <button
+                        type="button"
+                        onClick={handlePreviewJson}
+                        className="rounded-full border border-sky-300/30 bg-sky-400/10 px-4 py-2 text-sm font-medium text-sky-100 transition hover:bg-sky-400/20"
+                      >
+                        Preview JSON
+                      </button>
+                      <button
+                        type="button"
+                        disabled={isImportingJson}
+                        onClick={() => void handleJsonImport()}
+                        className="rounded-full bg-emerald-400 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-emerald-300 disabled:cursor-not-allowed disabled:bg-slate-600 disabled:text-slate-300"
+                      >
+                        {isImportingJson ? 'Importing JSON...' : 'Import JSON Rows'}
+                      </button>
+                    </div>
+                  </div>
+
+                  <aside className="overflow-auto rounded-2xl border border-white/10 bg-slate-950/35 p-4">
+                    <h3 className="text-base font-semibold text-white">JSON Notes</h3>
+                    <div className="mt-4 space-y-3 text-sm text-slate-300">
+                      <p>Accepted shapes:</p>
+                      <code className="block whitespace-pre-wrap rounded-2xl border border-white/10 bg-white/5 p-3 text-xs text-emerald-200">[{`{"ticker":"AAPL",...}`}]</code>
+                      <code className="block whitespace-pre-wrap rounded-2xl border border-white/10 bg-white/5 p-3 text-xs text-emerald-200">{`{"rows":[{"ticker":"AAPL",...}]}`}</code>
+                      <p>Each row uses the same server-side validation as CSV import.</p>
+                      <p>For SPECIFIC SELL imports, allocations can use either buyTradeId or buyTradeRef.</p>
+                      <p>Load the sample payload if you want a quick starting point with BUY and SPECIFIC SELL rows.</p>
+                    </div>
+                  </aside>
+                </div>
+              </div>
+            </div>,
+            document.body
+          )
+        : null}
     </section>
   );
 }
