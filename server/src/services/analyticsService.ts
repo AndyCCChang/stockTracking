@@ -46,11 +46,9 @@ function sumNullable(values: Array<number | null>) {
   return sum;
 }
 
-function getDataset(userId: number) {
-  return {
-    trades: getAllTrades(userId),
-    allocations: getAllTradeAllocations(userId)
-  };
+async function getDataset(userId: number) {
+  const [trades, allocations] = await Promise.all([getAllTrades(userId), getAllTradeAllocations(userId)]);
+  return { trades, allocations };
 }
 
 function toPositionApiItem(item: UnrealizedSummary, openLotsCount: number, quote?: LatestPriceQuote): PositionApiItem {
@@ -184,7 +182,7 @@ function createEmptyDashboard(): DashboardResponse {
 }
 
 export async function getDashboardAnalytics(userId: number): Promise<DashboardResponse> {
-  const { trades, allocations } = getDataset(userId);
+  const { trades, allocations } = await getDataset(userId);
   if (trades.length === 0) {
     return createEmptyDashboard();
   }
@@ -220,7 +218,7 @@ export async function getDashboardAnalytics(userId: number): Promise<DashboardRe
 }
 
 export async function getPositionsAnalytics(userId: number): Promise<PositionApiItem[]> {
-  const { trades, allocations } = getDataset(userId);
+  const { trades, allocations } = await getDataset(userId);
   if (trades.length === 0) {
     return [];
   }
@@ -234,8 +232,8 @@ export async function getPositionsAnalytics(userId: number): Promise<PositionApi
   return unrealized.map((item) => toPositionApiItem(item, openLotsCountMap.get(item.ticker) ?? 0, quotesByTicker.get(item.ticker)));
 }
 
-export function getRealizedAnalytics(userId: number): RealizedApiItem[] {
-  const { trades, allocations } = getDataset(userId);
+export async function getRealizedAnalytics(userId: number): Promise<RealizedApiItem[]> {
+  const { trades, allocations } = await getDataset(userId);
   if (trades.length === 0) {
     return [];
   }
@@ -243,8 +241,8 @@ export function getRealizedAnalytics(userId: number): RealizedApiItem[] {
   return buildRealizedItems(trades, allocations);
 }
 
-export function getPerformanceAnalytics(userId: number) {
-  const { trades, allocations } = getDataset(userId);
+export async function getPerformanceAnalytics(userId: number) {
+  const { trades, allocations } = await getDataset(userId);
   if (trades.length === 0) {
     return {
       winRate: 0,
@@ -276,7 +274,7 @@ export function getPerformanceAnalytics(userId: number) {
 }
 
 export async function getYearlySummaryAnalytics(userId: number): Promise<YearlySummary[]> {
-  const { trades, allocations } = getDataset(userId);
+  const { trades, allocations } = await getDataset(userId);
   if (trades.length === 0) {
     return [];
   }
@@ -286,7 +284,7 @@ export async function getYearlySummaryAnalytics(userId: number): Promise<YearlyS
 }
 
 export async function getMonthlySummaryAnalytics(userId: number, year: string): Promise<MonthlySummaryResponse> {
-  const { trades, allocations } = getDataset(userId);
+  const { trades, allocations }: { trades: TradeRecord[]; allocations: TradeLotAllocationRecord[] } = await getDataset(userId);
   const realizedItems = buildRealizedItems(trades, allocations);
   const unrealized = await calculateUnrealizedPnL(trades, allocations, getLatestPrice);
   const currentYear = dayjs().format('YYYY');
@@ -296,7 +294,7 @@ export async function getMonthlySummaryAnalytics(userId: number, year: string): 
   const months = Array.from({ length: 12 }, (_, index) => {
     const month = String(index + 1).padStart(2, '0');
     const prefix = `${year}-${month}`;
-    const monthTrades = trades.filter((trade) => trade.tradeDate.startsWith(prefix));
+    const monthTrades: TradeRecord[] = trades.filter((trade) => trade.tradeDate.startsWith(prefix));
     const realizedPnL = realizedItems.filter((item) => item.sellDate.startsWith(prefix)).reduce((sum, item) => sum + item.realizedPnL, 0);
     const buyAmount = monthTrades.filter((trade) => trade.type === 'BUY').reduce((sum, trade) => sum + trade.quantity * trade.price, 0);
     const sellAmount = monthTrades.filter((trade) => trade.type === 'SELL').reduce((sum, trade) => sum + trade.quantity * trade.price, 0);

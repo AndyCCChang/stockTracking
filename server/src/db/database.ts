@@ -1,157 +1,153 @@
-import Database from 'better-sqlite3';
-import { existsSync, mkdirSync } from 'node:fs';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { tradeTableSchema, userTableSchema } from './schema.js';
+import { newDb } from 'pg-mem';
+import { Pool, type PoolClient, type QueryResult, type QueryResultRow } from 'pg';
+import { env } from '../config/env.js';
+import { AppError, ServiceUnavailableError } from '../lib/errors.js';
+import { appMetaSchema, tradeTableSchema, userTableSchema } from './schema.js';
 
-const currentDir = path.dirname(fileURLToPath(import.meta.url));
-const serverRoot = path.resolve(currentDir, '../..');
-const dataDir = path.join(serverRoot, 'data');
-const databaseFile = path.join(dataDir, 'stock-tracking.sqlite');
-const LEGACY_USER_EMAIL = 'legacy@stock-tracking.local';
-const LEGACY_PASSWORD_HASH = 'legacy-user-disabled';
+export type Queryable = Pick<Pool, 'query'> | Pick<PoolClient, 'query'>;
 
-mkdirSync(dataDir, { recursive: true });
-
-export const db = new Database(databaseFile);
-
-type MigrationTradeRow = {
-  id: number;
-  ticker: string;
-  tradeDate: string;
-  type: 'BUY' | 'SELL';
-  quantity: number;
-  price: number;
-  fee: number;
-  currency: string;
-  createdAt: string;
-  updatedAt: string;
-  lotSelectionMethod?: 'FIFO' | 'SPECIFIC';
+type DatabaseStatus = {
+  driver: 'pg' | 'pg-mem';
+  status: 'connected';
+  database: string;
 };
 
-type OpenBuyLot = {
-  id: number;
-  ticker: string;
-  tradeDate: string;
-  quantity: number;
-  allocatedQuantity: number;
-  price: number;
+const DATABASE_UNAVAILABLE_MESSAGE = 'Database is unavailable. Please check DATABASE_URL and ensure PostgreSQL is running.';
+const SHOULD_USE_SSL = env.databaseUrl?.includes('render.com') || env.isProduction;
+
+function createPool() {
+  if (env.databaseMode === 'memory') {
+    const memoryDb = newDb({ autoCreateForeignKeyIndices: true });
+    const adapter = memoryDb.adapters.createPg();
+    return new adapter.Pool() as unknown as Pool;
+  }
+
+  return new Pool({
+    connectionString: env.databaseUrl!,
+    ssl: SHOULD_USE_SSL ? { rejectUnauthorized: false } : false
+  });
+}
+
+export const pool = createPool();
+
+let initializedPromise: Promise<void> | null = null;
+
+async function runSchemaSetup(client: Queryable) {
+  await client.query(appMetaSchema);
+  await client.query(userTableSchema);
+  await client.query(tradeTableSchema);
+  await client.query(
+    `INSERT INTO app_meta (key, value)
+     VALUES ('initializedAt', $1)
+     ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`,
+    [new Date().toISOString()]
+  );
+}
+
+type PgLikeError = Error & {
+  code?: string;
+  errno?: number;
+  syscall?: string;
 };
 
-function hasTradeColumn(columnName: string) {
-  const columns = db.prepare('PRAGMA table_info(trades)').all() as Array<{ name: string }>;
-  return columns.some((column) => column.name === columnName);
-}
-
-function ensureTradeColumn(columnName: string, statement: string) {
-  if (!hasTradeColumn(columnName)) {
-    db.exec(statement);
-  }
-}
-
-function ensureLegacyUser() {
-  const existing = db.prepare('SELECT id FROM users WHERE email = ?').get(LEGACY_USER_EMAIL) as { id: number } | undefined;
-  if (existing) {
-    return Number(existing.id);
+function isDatabaseUnavailableError(error: unknown) {
+  if (!(error instanceof Error)) {
+    return false;
   }
 
-  const now = new Date().toISOString();
-  const result = db.prepare(
-    `INSERT INTO users (email, passwordHash, name, createdAt, updatedAt)
-     VALUES (?, ?, ?, ?, ?)`
-  ).run(LEGACY_USER_EMAIL, LEGACY_PASSWORD_HASH, 'Legacy Seed User', now, now);
-
-  return Number(result.lastInsertRowid);
+  const pgError = error as PgLikeError;
+  const code = pgError.code ?? '';
+  return [
+    'ECONNREFUSED',
+    'ECONNRESET',
+    'ENOTFOUND',
+    'ETIMEDOUT',
+    'EHOSTUNREACH',
+    '57P03'
+  ].includes(code);
 }
 
-function ensureTradeUserIdColumn() {
-  if (!hasTradeColumn('userId')) {
-    db.exec('ALTER TABLE trades ADD COLUMN userId INTEGER');
+function normalizeDatabaseError(error: unknown) {
+  if (error instanceof AppError) {
+    return error;
   }
 
-  const legacyUserId = ensureLegacyUser();
-  db.prepare('UPDATE trades SET userId = ? WHERE userId IS NULL').run(legacyUserId);
-  db.exec('CREATE INDEX IF NOT EXISTS idx_trades_user_id ON trades(userId)');
+  if (isDatabaseUnavailableError(error)) {
+    return new ServiceUnavailableError(DATABASE_UNAVAILABLE_MESSAGE);
+  }
+
+  return error;
 }
 
-function backfillLegacyAllocations() {
-  const allocationCountRow = db.prepare('SELECT COUNT(*) as count FROM trade_lot_allocations').get() as { count: number };
-  const sellCountRow = db.prepare("SELECT COUNT(*) as count FROM trades WHERE type = 'SELL'").get() as { count: number };
-  if (Number(allocationCountRow.count) > 0 || Number(sellCountRow.count) === 0) {
-    return;
-  }
-
-  const trades = db.prepare('SELECT * FROM trades ORDER BY tradeDate ASC, createdAt ASC, id ASC').all() as MigrationTradeRow[];
-  const buyLots = new Map<string, OpenBuyLot[]>();
-  const insertAllocation = db.prepare(
-    `INSERT INTO trade_lot_allocations (sellTradeId, buyTradeId, quantity, createdAt, buyPriceSnapshot, buyTradeDateSnapshot)
-     VALUES (?, ?, ?, ?, ?, ?)`
-  );
-
-  for (const trade of trades) {
-    const tickerLots = buyLots.get(trade.ticker) ?? [];
-    if (trade.type === 'BUY') {
-      tickerLots.push({
-        id: trade.id,
-        ticker: trade.ticker,
-        tradeDate: trade.tradeDate,
-        quantity: Number(trade.quantity),
-        allocatedQuantity: 0,
-        price: Number(trade.price)
-      });
-      buyLots.set(trade.ticker, tickerLots);
-      continue;
-    }
-
-    let remaining = Number(trade.quantity);
-    for (const lot of tickerLots) {
-      if (remaining <= 0) {
-        break;
+export async function initializeDatabase() {
+  if (!initializedPromise) {
+    initializedPromise = (async () => {
+      const client = await pool.connect();
+      try {
+        await runSchemaSetup(client);
+      } finally {
+        client.release();
       }
+    })().catch((error) => {
+      initializedPromise = null;
+      throw normalizeDatabaseError(error);
+    });
+  }
 
-      const available = lot.quantity - lot.allocatedQuantity;
-      if (available <= 0) {
-        continue;
-      }
+  return initializedPromise;
+}
 
-      const allocated = Math.min(available, remaining);
-      lot.allocatedQuantity += allocated;
-      remaining -= allocated;
-      insertAllocation.run(trade.id, lot.id, allocated, new Date().toISOString(), lot.price, lot.tradeDate);
-    }
+export async function query<T extends QueryResultRow = QueryResultRow>(
+  text: string,
+  params: unknown[] = [],
+  client?: Queryable
+): Promise<QueryResult<T>> {
+  try {
+    await initializeDatabase();
+    const executor = client ?? pool;
+    return await executor.query<T>(text, params);
+  } catch (error) {
+    throw normalizeDatabaseError(error);
   }
 }
 
-export function initializeDatabase() {
-  db.pragma('journal_mode = WAL');
-  db.pragma('foreign_keys = ON');
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS app_meta (
-      key TEXT PRIMARY KEY,
-      value TEXT NOT NULL
-    );
-  `);
-  db.exec(userTableSchema);
-  db.exec(tradeTableSchema);
-  ensureTradeColumn(
-    'lotSelectionMethod',
-    "ALTER TABLE trades ADD COLUMN lotSelectionMethod TEXT NOT NULL DEFAULT 'FIFO'"
-  );
-  ensureTradeUserIdColumn();
-  db.prepare(
-    `INSERT INTO app_meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`
-  ).run('initializedAt', new Date().toISOString());
-  backfillLegacyAllocations();
+export async function withTransaction<T>(fn: (client: PoolClient) => Promise<T>) {
+  let client: PoolClient | null = null;
+
+  try {
+    await initializeDatabase();
+    client = await pool.connect();
+    await client.query('BEGIN');
+    const result = await fn(client);
+    await client.query('COMMIT');
+    return result;
+  } catch (error) {
+    if (client) {
+      await client.query('ROLLBACK').catch(() => undefined);
+    }
+    throw normalizeDatabaseError(error);
+  } finally {
+    client?.release();
+  }
 }
 
-initializeDatabase();
+export async function getDatabaseStatus(): Promise<DatabaseStatus> {
+  if (env.databaseMode === 'memory') {
+    return {
+      driver: 'pg-mem',
+      status: 'connected',
+      database: 'stock_tracking_memory'
+    };
+  }
 
-export function getDatabaseStatus() {
-  db.prepare('SELECT 1').get();
+  const result = await query<{ current_database: string }>('SELECT current_database()');
   return {
-    file: databaseFile,
-    exists: existsSync(databaseFile),
-    driver: 'better-sqlite3',
-    status: 'connected' as const
+    driver: 'pg',
+    status: 'connected',
+    database: result.rows[0]?.current_database ?? 'unknown'
   };
+}
+
+export async function closeDatabase() {
+  await pool.end();
 }

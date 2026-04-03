@@ -11,8 +11,10 @@ type AuthPayload = {
   user: { id: number; email: string };
 };
 
+const integrationTest = process.env.DATABASE_URL ? test : test.skip;
+
 async function startTestServer() {
-  resetTrades();
+  await resetTrades();
   const app = createApp();
   const server = createServer(app);
   server.listen(0);
@@ -31,7 +33,7 @@ async function startTestServer() {
   });
   const auth = await registerResponse.json() as AuthPayload;
 
-  const aaplBuyOne = createTradeWithValidation(auth.user.id, validateTradeInput({
+  const aaplBuyOne = await createTradeWithValidation(auth.user.id, validateTradeInput({
     ticker: 'AAPL',
     tradeDate: '2026-01-03',
     type: 'BUY',
@@ -40,7 +42,7 @@ async function startTestServer() {
     fee: 1
   }));
 
-  const aaplBuyTwo = createTradeWithValidation(auth.user.id, validateTradeInput({
+  const aaplBuyTwo = await createTradeWithValidation(auth.user.id, validateTradeInput({
     ticker: 'AAPL',
     tradeDate: '2026-01-10',
     type: 'BUY',
@@ -49,7 +51,7 @@ async function startTestServer() {
     fee: 1
   }));
 
-  const aaplSell = createTradeWithValidation(auth.user.id, validateTradeInput({
+  const aaplSell = await createTradeWithValidation(auth.user.id, validateTradeInput({
     ticker: 'AAPL',
     tradeDate: '2026-02-10',
     type: 'SELL',
@@ -63,7 +65,7 @@ async function startTestServer() {
     ]
   }));
 
-  createTradeWithValidation(auth.user.id, validateTradeInput({
+  await createTradeWithValidation(auth.user.id, validateTradeInput({
     ticker: 'MSFT',
     tradeDate: '2026-01-15',
     type: 'BUY',
@@ -84,7 +86,7 @@ async function startTestServer() {
   };
 }
 
-test('GET /api/dashboard returns stable analytics payload', async () => {
+integrationTest('GET /api/dashboard returns stable analytics payload', async () => {
   const { server, baseUrl, token } = await startTestServer();
 
   const response = await fetch(`${baseUrl}/api/dashboard`, {
@@ -107,10 +109,10 @@ test('GET /api/dashboard returns stable analytics payload', async () => {
 
   server.close();
   await once(server, 'close');
-  resetTrades();
+  await resetTrades();
 });
 
-test('GET /api/realized returns allocation-based grouped sell records', async () => {
+integrationTest('GET /api/realized returns allocation-based grouped sell records', async () => {
   const { server, baseUrl, token, ids } = await startTestServer();
 
   const response = await fetch(`${baseUrl}/api/realized`, {
@@ -133,10 +135,10 @@ test('GET /api/realized returns allocation-based grouped sell records', async ()
 
   server.close();
   await once(server, 'close');
-  resetTrades();
+  await resetTrades();
 });
 
-test('GET /api/positions reflects remaining open lots after allocations', async () => {
+integrationTest('GET /api/positions reflects remaining open lots after allocations', async () => {
   const { server, baseUrl, token } = await startTestServer();
 
   const response = await fetch(`${baseUrl}/api/positions`, {
@@ -157,5 +159,5 @@ test('GET /api/positions reflects remaining open lots after allocations', async 
 
   server.close();
   await once(server, 'close');
-  resetTrades();
+  await resetTrades();
 });

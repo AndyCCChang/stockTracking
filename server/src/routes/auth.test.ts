@@ -15,8 +15,10 @@ type AuthPayload = {
   };
 };
 
+const integrationTest = process.env.DATABASE_URL ? test : test.skip;
+
 async function startTestServer() {
-  resetTrades();
+  await resetTrades();
   const app = createApp();
   const server = createServer(app);
   server.listen(0);
@@ -53,7 +55,7 @@ async function login(baseUrl: string, email: string, password = 'Password123!') 
   return { response, payload };
 }
 
-test('register and login return JWT token and user payload', async () => {
+integrationTest('register and login return JWT token and user payload', async () => {
   const { server, baseUrl } = await startTestServer();
 
   const registerResult = await register(baseUrl, 'alpha@example.com');
@@ -68,10 +70,10 @@ test('register and login return JWT token and user payload', async () => {
 
   server.close();
   await once(server, 'close');
-  resetTrades();
+  await resetTrades();
 });
 
-test('protected API rejects requests without token', async () => {
+integrationTest('protected API rejects requests without token', async () => {
   const { server, baseUrl } = await startTestServer();
 
   const response = await fetch(`${baseUrl}/api/trades`);
@@ -82,10 +84,10 @@ test('protected API rejects requests without token', async () => {
 
   server.close();
   await once(server, 'close');
-  resetTrades();
+  await resetTrades();
 });
 
-test('user B cannot modify user A trade and cannot see user A trades', async () => {
+integrationTest('user B cannot modify user A trade and cannot see user A trades', async () => {
   const { server, baseUrl } = await startTestServer();
 
   const alpha = await register(baseUrl, 'alpha@example.com');
@@ -93,7 +95,7 @@ test('user B cannot modify user A trade and cannot see user A trades', async () 
   const alphaAuth = alpha.payload as AuthPayload;
   const betaAuth = beta.payload as AuthPayload;
 
-  const trade = createTradeWithValidation(alphaAuth.user.id, validateTradeInput({
+  const trade = await createTradeWithValidation(alphaAuth.user.id, validateTradeInput({
     ticker: 'AAPL',
     tradeDate: '2026-03-01',
     type: 'BUY',
@@ -121,10 +123,10 @@ test('user B cannot modify user A trade and cannot see user A trades', async () 
 
   server.close();
   await once(server, 'close');
-  resetTrades();
+  await resetTrades();
 });
 
-test('SELL allocation cannot use another user BUY lot', async () => {
+integrationTest('SELL allocation cannot use another user BUY lot', async () => {
   const { server, baseUrl } = await startTestServer();
 
   const alpha = await register(baseUrl, 'alpha@example.com');
@@ -132,7 +134,7 @@ test('SELL allocation cannot use another user BUY lot', async () => {
   const alphaAuth = alpha.payload as AuthPayload;
   const betaAuth = beta.payload as AuthPayload;
 
-  const alphaBuy = createTradeWithValidation(alphaAuth.user.id, validateTradeInput({
+  const alphaBuy = await createTradeWithValidation(alphaAuth.user.id, validateTradeInput({
     ticker: 'NVDA',
     tradeDate: '2026-03-01',
     type: 'BUY',
@@ -165,5 +167,5 @@ test('SELL allocation cannot use another user BUY lot', async () => {
 
   server.close();
   await once(server, 'close');
-  resetTrades();
+  await resetTrades();
 });

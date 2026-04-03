@@ -14,13 +14,14 @@
     "dev": "concurrently \"npm --prefix server run dev\" \"npm --prefix client run dev\"",
     "dev:server": "npm --prefix server run dev",
     "dev:client": "npm --prefix client run dev",
+    "start": "npm --prefix server run start",
     "build": "npm --prefix server run build && npm --prefix client run build",
     "lint": "npm --prefix server run lint && npm --prefix client run lint",
     "db:init": "npm --prefix server run db:init",
     "db:seed": "npm --prefix server run db:seed",
     "test:server": "npm --prefix server run test",
-    "test:e2e": "playwright test",
-    "test:e2e:headed": "playwright test --headed"
+    "test:e2e": "node scripts/ensure-e2e-env.mjs && playwright test",
+    "test:e2e:headed": "node scripts/ensure-e2e-env.mjs && playwright test --headed"
   },
   "devDependencies": {
     "@playwright/test": "^1.58.2",

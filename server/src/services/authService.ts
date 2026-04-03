@@ -5,19 +5,19 @@ import { signAuthToken } from '../utils/jwt.js';
 import type { AuthResponse, LoginInput, RegisterInput } from '../types.js';
 
 export async function registerUser(input: RegisterInput): Promise<AuthResponse> {
-  const existing = findUserByEmail(input.email);
+  const existing = await findUserByEmail(input.email);
   if (existing) {
     throw new ConflictError('Email already exists');
   }
 
   const passwordHash = await hashPassword(input.password);
-  const userId = createUser({
+  const userId = await createUser({
     email: input.email,
     passwordHash,
     name: input.name ?? null
   });
 
-  const user = getUserById(userId);
+  const user = await getUserById(userId);
   if (!user) {
     throw new Error('User was not found after registration');
   }
@@ -29,7 +29,7 @@ export async function registerUser(input: RegisterInput): Promise<AuthResponse> 
 }
 
 export async function loginUser(input: LoginInput): Promise<AuthResponse> {
-  const user = findUserByEmail(input.email);
+  const user = await findUserByEmail(input.email);
   if (!user) {
     throw new UnauthorizedError('Invalid email or password');
   }

@@ -1,9 +1,9 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 
 export function LoginPage() {
-  const { isAuthenticated, login } = useAuth();
+  const { isAuthenticated, login, authNotice, clearAuthNotice } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const redirectTo = typeof location.state === 'object' && location.state && 'from' in location.state && typeof location.state.from === 'string'
@@ -13,6 +13,12 @@ export function LoginPage() {
   const [password, setPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    return () => {
+      clearAuthNotice();
+    };
+  }, []);
 
   if (isAuthenticated) {
     return <Navigate to="/" replace />;
@@ -38,6 +44,22 @@ export function LoginPage() {
         <p className="text-sm uppercase tracking-[0.28em] text-emerald-300/80">Member Access</p>
         <h1 className="mt-3 text-3xl font-semibold text-white">Login</h1>
         <p className="mt-3 text-sm text-slate-400">Sign in to access your private journal, trades, and analytics.</p>
+
+        <div className="mt-4 rounded-2xl border border-sky-400/20 bg-sky-500/10 px-4 py-3 text-sm text-sky-100">
+          <p className="font-medium text-white">Demo Access</p>
+          <p className="mt-1 text-sky-100/90">Use <span className="font-mono">demo@example.com</span> / <span className="font-mono">DemoPass123!</span> when running the local memory database mode.</p>
+        </div>
+
+        {authNotice ? (
+          <div className="mt-4 rounded-2xl border border-amber-300/30 bg-amber-400/10 px-4 py-3 text-sm text-amber-100">
+            <div className="flex items-start justify-between gap-3">
+              <span>{authNotice}</span>
+              <button type="button" onClick={clearAuthNotice} className="shrink-0 rounded-full border border-white/10 px-2 py-0.5 text-[11px] font-medium text-amber-50 transition hover:bg-white/10">
+                Dismiss
+              </button>
+            </div>
+          </div>
+        ) : null}
 
         {error ? <div className="mt-4 rounded-2xl border border-rose-400/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">{error}</div> : null}
 

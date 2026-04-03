@@ -188,19 +188,33 @@ export function DashboardPage() {
 
         <article className="rounded-2xl border border-white/10 bg-white/5 p-5">
           <h2 className="text-lg font-semibold text-white">System Status</h2>
-          <p className="mt-2 text-sm text-slate-400">Checks the Express API and confirms the SQLite layer is initialized.</p>
+          <p className="mt-2 text-sm text-slate-400">Checks the Express API and confirms the production database connection is healthy.</p>
 
           <div className="mt-5 space-y-4">
             <div className="rounded-2xl border border-white/10 bg-slate-950/60 p-4">
               <p className="text-xs uppercase tracking-[0.25em] text-slate-500">API Health</p>
-              <p className="mt-3 text-xl font-semibold text-white">{health?.status === 'ok' ? 'Online' : 'Waiting'}</p>
-              <p className="mt-2 text-sm text-slate-400">{error ?? health?.service ?? 'Requesting /api/health ...'}</p>
+              <p className="mt-3 text-xl font-semibold text-white">{health?.status === 'ok' ? 'Online' : health?.status === 'degraded' ? 'Degraded' : 'Waiting'}</p>
+              <p className="mt-2 text-sm text-slate-400">{error ?? health?.services.message ?? health?.service ?? 'Requesting /api/health ...'}</p>
             </div>
             <div className="rounded-2xl border border-white/10 bg-slate-950/60 p-4">
               <p className="text-xs uppercase tracking-[0.25em] text-slate-500">Database</p>
-              <p className="mt-3 text-xl font-semibold text-white">{health?.database ?? 'sqlite-pending'}</p>
+              <p className="mt-3 text-xl font-semibold text-white">{health?.database ?? 'database-pending'}</p>
               <p className="mt-2 text-sm text-slate-400">
-                {health ? `Last checked ${dayjs(health.timestamp).format('YYYY-MM-DD HH:mm:ss')}` : 'Waiting for backend response'}
+                {health ? `${health.services.databaseDriver} / ${health.services.databaseName ?? 'unavailable'}` : 'Waiting for backend response'}
+              </p>
+            </div>
+            <div className="rounded-2xl border border-white/10 bg-slate-950/60 p-4">
+              <p className="text-xs uppercase tracking-[0.25em] text-slate-500">Runtime</p>
+              <p className="mt-3 text-xl font-semibold text-white">{health?.runtime.nodeEnv ?? 'pending'}</p>
+              <p className="mt-2 text-sm text-slate-400">
+                {health ? `Node ${health.runtime.nodeVersion} on port ${health.runtime.port}` : 'Waiting for backend response'}
+              </p>
+            </div>
+            <div className="rounded-2xl border border-white/10 bg-slate-950/60 p-4">
+              <p className="text-xs uppercase tracking-[0.25em] text-slate-500">Deploy Config</p>
+              <p className="mt-3 text-xl font-semibold text-white">{health?.services.corsConfigured ? 'Ready' : 'Needs Review'}</p>
+              <p className="mt-2 text-sm text-slate-400">
+                {health ? `CORS ${health.services.corsConfigured ? 'configured' : 'open'} · Price provider ${health.services.priceProvider}` : 'Waiting for backend response'}
               </p>
             </div>
             <div className="rounded-2xl border border-white/10 bg-slate-950/60 p-4">

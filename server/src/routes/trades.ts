@@ -20,40 +20,64 @@ function normalizeQuery(query: Record<string, unknown>) {
 
 router.use(authenticateJWT);
 
-router.get('/trades', (req, res) => {
-  const filters = validateTradeFilters(normalizeQuery(req.query as Record<string, unknown>));
-  res.json(getTrades(req.user!.userId, filters));
+router.get('/trades', async (req, res, next) => {
+  try {
+    const filters = validateTradeFilters(normalizeQuery(req.query as Record<string, unknown>));
+    res.json(await getTrades(req.user!.userId, filters));
+  } catch (error) {
+    next(error);
+  }
 });
 
-router.get('/trades/export', (req, res) => {
-  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-  res.setHeader('Content-Disposition', 'attachment; filename="trades-export.csv"');
-  res.send(exportTradesAsCsv(req.user!.userId));
+router.get('/trades/export', async (req, res, next) => {
+  try {
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', 'attachment; filename="trades-export.csv"');
+    res.send(await exportTradesAsCsv(req.user!.userId));
+  } catch (error) {
+    next(error);
+  }
 });
 
-router.post('/trades/import', (req, res) => {
-  const rows = validateTradeImportRows(req.body);
-  const result = importTradesWithValidation(req.user!.userId, rows);
-  res.status(201).json(result);
+router.post('/trades/import', async (req, res, next) => {
+  try {
+    const rows = validateTradeImportRows(req.body);
+    const result = await importTradesWithValidation(req.user!.userId, rows);
+    res.status(201).json(result);
+  } catch (error) {
+    next(error);
+  }
 });
 
-router.post('/trades', (req, res) => {
-  const payload = validateTradeInput(req.body);
-  const trade = createTradeWithValidation(req.user!.userId, payload);
-  res.status(201).json(trade);
+router.post('/trades', async (req, res, next) => {
+  try {
+    const payload = validateTradeInput(req.body);
+    const trade = await createTradeWithValidation(req.user!.userId, payload);
+    res.status(201).json(trade);
+  } catch (error) {
+    next(error);
+  }
 });
 
-router.put('/trades/:id', (req, res) => {
-  const id = validateTradeId(req.params.id);
-  const payload = validateTradeInput(req.body);
-  const trade = updateTradeWithValidation(req.user!.userId, id, payload);
-  res.json(trade);
+router.put('/trades/:id', async (req, res, next) => {
+  try {
+    const id = validateTradeId(req.params.id);
+    const payload = validateTradeInput(req.body);
+    const trade = await updateTradeWithValidation(req.user!.userId, id, payload);
+    res.json(trade);
+  } catch (error) {
+    next(error);
+  }
 });
 
-router.delete('/trades/:id', (req, res) => {
-  const id = validateTradeId(req.params.id);
-  deleteTradeWithValidation(req.user!.userId, id);
-  res.status(204).send();
+router.delete('/trades/:id', async (req, res, next) => {
+  try {
+    const id = validateTradeId(req.params.id);
+    await deleteTradeWithValidation(req.user!.userId, id);
+    res.status(204).send();
+  } catch (error) {
+    next(error);
+  }
 });
 
 export default router;

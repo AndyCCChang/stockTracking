@@ -1,3 +1,4 @@
+import type { Queryable } from './db/database.js';
 import {
   clearAllData,
   deleteTradeRow,
@@ -24,8 +25,8 @@ import type {
   TradeRecord
 } from './types.js';
 
-function assertTradeOwnership(userId: number, tradeId: number) {
-  const ownerId = getTradeOwnerId(tradeId);
+async function assertTradeOwnership(userId: number, tradeId: number, db?: Queryable) {
+  const ownerId = await getTradeOwnerId(tradeId, db);
   if (ownerId == null) {
     throw new NotFoundError(`Trade ${tradeId} not found`);
   }
@@ -35,36 +36,36 @@ function assertTradeOwnership(userId: number, tradeId: number) {
   }
 }
 
-function assertAllocationOwnership(userId: number, input: TradeInput) {
+async function assertAllocationOwnership(userId: number, input: TradeInput, db?: Queryable) {
   if (input.type !== 'SELL' || input.lotSelectionMethod !== 'SPECIFIC') {
     return;
   }
 
   for (const allocation of input.allocations ?? []) {
-    const ownerId = getTradeOwnerId(allocation.buyTradeId);
+    const ownerId = await getTradeOwnerId(allocation.buyTradeId, db);
     if (ownerId != null && ownerId !== userId) {
       throw new ForbiddenError(`BUY lot ${allocation.buyTradeId} belongs to another user`);
     }
   }
 }
 
-function rebuildAllocations(userId: number, overrides: Map<number, TradeLotAllocationInput[] | undefined> = new Map()) {
-  const trades = getAllTrades(userId);
-  const existingAllocations = getAllTradeAllocations(userId);
+async function rebuildAllocations(userId: number, overrides: Map<number, TradeLotAllocationInput[] | undefined> = new Map(), db?: Queryable) {
+  const trades = await getAllTrades(userId, db);
+  const existingAllocations = await getAllTradeAllocations(userId, db);
   const plannedAllocations = buildAllocationPlan(trades, existingAllocations, overrides);
-  replaceAllAllocations(userId, plannedAllocations);
+  await replaceAllAllocations(userId, plannedAllocations, db);
 }
 
-function createTradeInCurrentTransaction(userId: number, input: TradeInput) {
-  assertAllocationOwnership(userId, input);
-  const tradeId = insertTrade(userId, input);
+async function createTradeInCurrentTransaction(userId: number, input: TradeInput, db: Queryable) {
+  await assertAllocationOwnership(userId, input, db);
+  const tradeId = await insertTrade(userId, input, db);
   const overrides = new Map<number, TradeLotAllocationInput[] | undefined>();
   if (input.type === 'SELL' && input.lotSelectionMethod === 'SPECIFIC') {
     overrides.set(tradeId, input.allocations ?? []);
   }
 
-  rebuildAllocations(userId, overrides);
-  const trade = getTradeById(userId, tradeId);
+  await rebuildAllocations(userId, overrides, db);
+  const trade = await getTradeById(userId, tradeId, db);
   if (!trade) {
     throw new NotFoundError(`Trade ${tradeId} not found after creation`);
   }
@@ -72,18 +73,18 @@ function createTradeInCurrentTransaction(userId: number, input: TradeInput) {
   return trade;
 }
 
-function updateTradeInCurrentTransaction(userId: number, id: number, input: TradeInput) {
-  assertTradeOwnership(userId, id);
-  assertAllocationOwnership(userId, input);
+async function updateTradeInCurrentTransaction(userId: number, id: number, input: TradeInput, db: Queryable) {
+  await assertTradeOwnership(userId, id, db);
+  await assertAllocationOwnership(userId, input, db);
 
-  updateTradeRow(id, input);
+  await updateTradeRow(id, input, db);
   const overrides = new Map<number, TradeLotAllocationInput[] | undefined>();
   if (input.type === 'SELL' && input.lotSelectionMethod === 'SPECIFIC') {
     overrides.set(id, input.allocations ?? []);
   }
 
-  rebuildAllocations(userId, overrides);
-  const trade = getTradeById(userId, id);
+  await rebuildAllocations(userId, overrides, db);
+  const trade = await getTradeById(userId, id, db);
   if (!trade) {
     throw new NotFoundError(`Trade ${id} not found after update`);
   }
@@ -144,28 +145,28 @@ function buildAllocationExportSummary(trade: TradeRecord) {
   );
 }
 
-export function getTrades(userId: number, filters: TradeFilters) {
+export async function getTrades(userId: number, filters: TradeFilters) {
   return listTrades(userId, filters);
 }
 
-export function createTradeWithValidation(userId: number, input: TradeInput) {
-  return runInTransaction(() => createTradeInCurrentTransaction(userId, input));
+export async function createTradeWithValidation(userId: number, input: TradeInput) {
+  return runInTransaction((db) => createTradeInCurrentTransaction(userId, input, db));
 }
 
-export function updateTradeWithValidation(userId: number, id: number, input: TradeInput) {
-  return runInTransaction(() => updateTradeInCurrentTransaction(userId, id, input));
+export async function updateTradeWithValidation(userId: number, id: number, input: TradeInput) {
+  return runInTransaction((db) => updateTradeInCurrentTransaction(userId, id, input, db));
 }
 
-export function deleteTradeWithValidation(userId: number, id: number) {
-  runInTransaction(() => {
-    assertTradeOwnership(userId, id);
-    deleteTradeRow(id);
-    rebuildAllocations(userId);
+export async function deleteTradeWithValidation(userId: number, id: number) {
+  await runInTransaction(async (db) => {
+    await assertTradeOwnership(userId, id, db);
+    await deleteTradeRow(id, db);
+    await rebuildAllocations(userId, new Map(), db);
   });
 }
 
-export function importTradesWithValidation(userId: number, rows: CsvTradeImportRow[]): CsvTradeImportResult {
-  return runInTransaction(() => {
+export async function importTradesWithValidation(userId: number, rows: CsvTradeImportRow[]): Promise<CsvTradeImportResult> {
+  return runInTransaction(async (db) => {
     const importRefMap = new Map<string, number>();
     const importedTradeIds: number[] = [];
 
@@ -175,7 +176,7 @@ export function importTradesWithValidation(userId: number, rows: CsvTradeImportR
       }
 
       const input = resolveCsvTradeInput(row, importRefMap);
-      const trade = createTradeInCurrentTransaction(userId, input);
+      const trade = await createTradeInCurrentTransaction(userId, input, db);
       importedTradeIds.push(trade.id);
       if (row.importRef) {
         importRefMap.set(row.importRef, trade.id);
@@ -189,8 +190,8 @@ export function importTradesWithValidation(userId: number, rows: CsvTradeImportR
   });
 }
 
-export function exportTradesAsCsv(userId: number) {
-  const trades = getAllTrades(userId);
+export async function exportTradesAsCsv(userId: number) {
+  const trades = await getAllTrades(userId);
   return toCsv(
     ['id', 'ticker', 'tradeDate', 'type', 'quantity', 'price', 'fee', 'notes', 'currency', 'lotSelectionMethod', 'allocations'],
     trades.map((trade) => ({
@@ -209,10 +210,11 @@ export function exportTradesAsCsv(userId: number) {
   );
 }
 
-export function getAvailableLotsForTrade(userId: number, ticker: string, tradeDate: string) {
-  return getOpenLots(getAllTrades(userId), getAllTradeAllocations(userId), { ticker, tradeDate });
+export async function getAvailableLotsForTrade(userId: number, ticker: string, tradeDate: string) {
+  const [trades, allocations] = await Promise.all([getAllTrades(userId), getAllTradeAllocations(userId)]);
+  return getOpenLots(trades, allocations, { ticker, tradeDate });
 }
 
-export function resetTrades() {
-  clearAllData();
+export async function resetTrades() {
+  await clearAllData();
 }

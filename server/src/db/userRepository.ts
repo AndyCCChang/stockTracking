@@ -1,4 +1,5 @@
-import { db } from './database.js';
+import type { Queryable } from './database.js';
+import { query } from './database.js';
 import type { PublicUser, UserRecord } from '../types.js';
 
 type UserRow = UserRecord;
@@ -24,26 +25,32 @@ export function toPublicUser(user: UserRecord): PublicUser {
   };
 }
 
-export function createUser(input: { email: string; passwordHash: string; name?: string | null }) {
+export async function createUser(
+  input: { email: string; passwordHash: string; name?: string | null },
+  db?: Queryable
+) {
   const now = new Date().toISOString();
-  const result = db.prepare(
-    `INSERT INTO users (email, passwordHash, name, createdAt, updatedAt)
-     VALUES (?, ?, ?, ?, ?)`
-  ).run(input.email, input.passwordHash, input.name ?? null, now, now);
+  const result = await query<{ id: number }>(
+    `INSERT INTO users (email, "passwordHash", name, "createdAt", "updatedAt")
+     VALUES ($1, $2, $3, $4, $5)
+     RETURNING id`,
+    [input.email, input.passwordHash, input.name ?? null, now, now],
+    db
+  );
 
-  return Number(result.lastInsertRowid);
+  return Number(result.rows[0].id);
 }
 
-export function findUserByEmail(email: string) {
-  const row = db.prepare('SELECT * FROM users WHERE email = ?').get(email) as UserRow | undefined;
-  return row ? mapUserRow(row) : null;
+export async function findUserByEmail(email: string, db?: Queryable) {
+  const result = await query<UserRow>('SELECT * FROM users WHERE email = $1 LIMIT 1', [email], db);
+  return result.rows[0] ? mapUserRow(result.rows[0]) : null;
 }
 
-export function getUserById(id: number) {
-  const row = db.prepare('SELECT * FROM users WHERE id = ?').get(id) as UserRow | undefined;
-  return row ? mapUserRow(row) : null;
+export async function getUserById(id: number, db?: Queryable) {
+  const result = await query<UserRow>('SELECT * FROM users WHERE id = $1 LIMIT 1', [id], db);
+  return result.rows[0] ? mapUserRow(result.rows[0]) : null;
 }
 
-export function deleteAllUsers() {
-  db.prepare('DELETE FROM users').run();
+export async function deleteAllUsers(db?: Queryable) {
+  await query('TRUNCATE TABLE users RESTART IDENTITY CASCADE', [], db);
 }

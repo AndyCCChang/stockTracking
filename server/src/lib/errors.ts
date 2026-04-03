@@ -49,3 +49,10 @@ export class InsufficientPositionError extends AppError {
     this.name = 'InsufficientPositionError';
   }
 }
+
+export class ServiceUnavailableError extends AppError {
+  constructor(message = 'Database is unavailable. Please check your server configuration and try again shortly.') {
+    super(message, 503);
+    this.name = 'ServiceUnavailableError';
+  }
+}

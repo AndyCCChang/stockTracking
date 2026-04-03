@@ -34,8 +34,9 @@ function createTrade(overrides: Partial<TradeRecord>): TradeRecord {
   };
 }
 
+const integrationTest = process.env.DATABASE_URL ? test : test.skip;
 
-function createTestUserId() {
+async function createTestUserId() {
   return createUser({
     email: `test-${Date.now()}-${Math.random().toString(16).slice(2)}@example.com`,
     passwordHash: 'test-password-hash',
@@ -145,11 +146,11 @@ test('Realized pnl is calculated from persisted allocations', () => {
   assert.equal(Number(realized.totalRealizedPnL.toFixed(2)), 77.6);
 });
 
-test('Updating SELL rebuilds allocations correctly', () => {
-  resetTrades();
-  const userId = createTestUserId();
+integrationTest('Updating SELL rebuilds allocations correctly', async () => {
+  await resetTrades();
+  const userId = await createTestUserId();
 
-  const buy1 = createTradeWithValidation(userId, validateTradeInput({
+  const buy1 = await createTradeWithValidation(userId, validateTradeInput({
     ticker: 'MSFT',
     tradeDate: '2025-01-01',
     type: 'BUY',
@@ -157,7 +158,7 @@ test('Updating SELL rebuilds allocations correctly', () => {
     price: 100,
     fee: 0
   }));
-  const buy2 = createTradeWithValidation(userId, validateTradeInput({
+  const buy2 = await createTradeWithValidation(userId, validateTradeInput({
     ticker: 'MSFT',
     tradeDate: '2025-01-02',
     type: 'BUY',
@@ -165,7 +166,7 @@ test('Updating SELL rebuilds allocations correctly', () => {
     price: 110,
     fee: 0
   }));
-  const sell = createTradeWithValidation(userId, validateTradeInput({
+  const sell = await createTradeWithValidation(userId, validateTradeInput({
     ticker: 'MSFT',
     tradeDate: '2025-01-10',
     type: 'SELL',
@@ -175,7 +176,7 @@ test('Updating SELL rebuilds allocations correctly', () => {
     lotSelectionMethod: 'FIFO'
   }));
 
-  const updated = updateTradeWithValidation(userId, sell.id, validateTradeInput({
+  const updated = await updateTradeWithValidation(userId, sell.id, validateTradeInput({
     ticker: 'MSFT',
     tradeDate: '2025-01-10',
     type: 'SELL',
@@ -186,17 +187,17 @@ test('Updating SELL rebuilds allocations correctly', () => {
     allocations: [{ buyTradeId: buy2.id, quantity: 4 }]
   }));
 
-  const refreshed = getTradeById(userId, updated.id);
-  const allocations = getAllTradeAllocations(userId).filter((item) => item.sellTradeId === updated.id);
+  const refreshed = await getTradeById(userId, updated.id);
+  const allocations: TradeLotAllocationRecord[] = (await getAllTradeAllocations(userId)).filter((item: TradeLotAllocationRecord) => item.sellTradeId === updated.id);
   const positions = calculateOpenPositionsFromLots([buy1, buy2, updated], allocations);
 
   assert.equal(refreshed?.lotSelectionMethod, 'SPECIFIC');
   assert.deepEqual(
-    allocations.map((item) => ({ buyTradeId: item.buyTradeId, quantity: item.quantity })),
+    allocations.map((item: TradeLotAllocationRecord) => ({ buyTradeId: item.buyTradeId, quantity: item.quantity })),
     [{ buyTradeId: buy2.id, quantity: 4 }]
   );
   assert.equal(positions[0]?.lots.find((lot) => lot.buyTradeId === buy1.id)?.availableQuantity, 5);
   assert.equal(positions[0]?.lots.find((lot) => lot.buyTradeId === buy2.id)?.availableQuantity, 1);
 
-  resetTrades();
+  await resetTrades();
 });

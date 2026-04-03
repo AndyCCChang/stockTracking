@@ -14,17 +14,21 @@
   },
   "dependencies": {
     "@types/bcrypt": "^6.0.0",
+    "@types/cors": "^2.8.19",
     "@types/jsonwebtoken": "^9.0.10",
     "bcrypt": "^6.0.0",
-    "better-sqlite3": "^11.10.0",
+    "cors": "^2.8.6",
     "dayjs": "^1.11.13",
     "express": "^4.21.2",
     "jsonwebtoken": "^9.0.3",
+    "pg": "^8.20.0",
+    "pg-mem": "^3.0.14",
     "yahoo-finance2": "^3.13.2"
   },
   "devDependencies": {
     "@types/express": "^5.0.1",
     "@types/node": "^22.13.11",
+    "@types/pg": "^8.20.0",
     "tsx": "^4.19.3",
     "typescript": "^5.8.2"
   }

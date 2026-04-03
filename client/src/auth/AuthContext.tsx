@@ -5,13 +5,17 @@ type AuthContextValue = {
   user: AuthUser | null;
   token: string | null;
   isAuthenticated: boolean;
+  authNotice: string | null;
   login: (payload: LoginPayload) => Promise<void>;
   register: (payload: RegisterPayload) => Promise<void>;
   logout: () => void;
+  clearAuthNotice: () => void;
 };
 
 const TOKEN_STORAGE_KEY = 'stock-tracking-token';
 const USER_STORAGE_KEY = 'stock-tracking-user';
+const AUTH_NOTICE_STORAGE_KEY = 'stock-tracking-auth-notice';
+const DEFAULT_UNAUTHORIZED_NOTICE = 'Your session expired or is no longer valid. Please sign in again.';
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
@@ -32,19 +36,41 @@ function readStoredAuth() {
   }
 }
 
+function readStoredAuthNotice() {
+  const notice = sessionStorage.getItem(AUTH_NOTICE_STORAGE_KEY);
+  return notice && notice.length > 0 ? notice : null;
+}
+
+function clearPersistedAuth() {
+  localStorage.removeItem(TOKEN_STORAGE_KEY);
+  localStorage.removeItem(USER_STORAGE_KEY);
+}
+
+function persistAuthNotice(message: string | null) {
+  if (message) {
+    sessionStorage.setItem(AUTH_NOTICE_STORAGE_KEY, message);
+    return;
+  }
+
+  sessionStorage.removeItem(AUTH_NOTICE_STORAGE_KEY);
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [{ token, user }, setAuthState] = useState(readStoredAuth);
+  const [authNotice, setAuthNotice] = useState<string | null>(readStoredAuthNotice);
 
   useEffect(() => {
     setAuthToken(token);
   }, [token]);
 
   useEffect(() => {
-    setUnauthorizedHandler(() => {
-      localStorage.removeItem(TOKEN_STORAGE_KEY);
-      localStorage.removeItem(USER_STORAGE_KEY);
+    setUnauthorizedHandler((message) => {
+      clearPersistedAuth();
       setAuthToken(null);
       setAuthState({ token: null, user: null });
+      const nextMessage = message || DEFAULT_UNAUTHORIZED_NOTICE;
+      persistAuthNotice(nextMessage);
+      setAuthNotice(nextMessage);
     });
 
     return () => {
@@ -54,6 +80,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   async function handleLogin(payload: LoginPayload) {
     const response = await loginRequest(payload);
+    persistAuthNotice(null);
+    setAuthNotice(null);
     localStorage.setItem(TOKEN_STORAGE_KEY, response.token);
     localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(response.user));
     setAuthState({ token: response.token, user: response.user });
@@ -61,16 +89,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   async function handleRegister(payload: RegisterPayload) {
     const response = await registerRequest(payload);
+    persistAuthNotice(null);
+    setAuthNotice(null);
     localStorage.setItem(TOKEN_STORAGE_KEY, response.token);
     localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(response.user));
     setAuthState({ token: response.token, user: response.user });
   }
 
   function logout() {
-    localStorage.removeItem(TOKEN_STORAGE_KEY);
-    localStorage.removeItem(USER_STORAGE_KEY);
+    clearPersistedAuth();
+    persistAuthNotice(null);
+    setAuthNotice(null);
     setAuthToken(null);
     setAuthState({ token: null, user: null });
+  }
+
+  function clearAuthNotice() {
+    persistAuthNotice(null);
+    setAuthNotice(null);
   }
 
   return (
@@ -79,9 +115,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         user,
         token,
         isAuthenticated: Boolean(token && user),
+        authNotice,
         login: handleLogin,
         register: handleRegister,
-        logout
+        logout,
+        clearAuthNotice
       }}
     >
       {children}

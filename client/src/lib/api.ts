@@ -28,10 +28,22 @@ export type AuthResponse = {
 };
 
 export type HealthResponse = {
-  status: 'ok';
+  status: 'ok' | 'degraded';
   service: string;
-  database: string;
+  database: 'connected' | 'unavailable' | string;
   timestamp: string;
+  runtime: {
+    nodeEnv: string;
+    nodeVersion: string;
+    port: number;
+  };
+  services: {
+    databaseDriver: string;
+    databaseName: string | null;
+    corsConfigured: boolean;
+    priceProvider: string;
+    message: string | null;
+  };
 };
 
 export type LatestPriceResponse = {
@@ -234,8 +246,11 @@ export type MonthlySummaryResponse = {
   months: MonthlySummaryItem[];
 };
 
+const configuredApiUrl = import.meta.env.VITE_API_URL?.trim();
+const apiBaseUrl = configuredApiUrl && configuredApiUrl.length > 0 ? configuredApiUrl.replace(/\/$/, '') : '/api';
+
 const api = axios.create({
-  baseURL: '/api',
+  baseURL: apiBaseUrl,
   timeout: 5000
 });
 
@@ -253,27 +268,70 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (axios.isAxiosError(error) && error.response?.status === 401 && unauthorizedHandler) {
-      unauthorizedHandler(normalizeErrorMessage(error));
+    if (axios.isAxiosError(error) && error.response?.status === 401 && unauthorizedHandler && authToken) {
+      const requestUrl = typeof error.config?.url === 'string' ? error.config.url : '';
+      const isAuthRequest = requestUrl.includes('/auth/login') || requestUrl.includes('/auth/register');
+      if (!isAuthRequest) {
+        unauthorizedHandler(normalizeUnauthorizedMessage(error));
+      }
     }
 
     return Promise.reject(error);
   }
 );
 
+function normalizeUnauthorizedMessage(error: unknown) {
+  const message = normalizeErrorMessage(error).trim();
+  if (!message) {
+    return 'Your session expired or is no longer valid. Please sign in again.';
+  }
+
+  const normalizedMessage = message.toLowerCase();
+  if (normalizedMessage.includes('token') || normalizedMessage.includes('unauthorized') || normalizedMessage.includes('jwt')) {
+    return 'Your session expired or is no longer valid. Please sign in again.';
+  }
+
+  return message;
+}
+
 function normalizeErrorMessage(error: unknown) {
   if (axios.isAxiosError(error)) {
     const apiMessage = error.response?.data?.message;
-    if (typeof apiMessage === 'string' && apiMessage.length > 0) {
-      return apiMessage;
+    if (typeof apiMessage === 'string' && apiMessage.trim().length > 0) {
+      return apiMessage.trim();
     }
 
-    if (typeof error.message === 'string' && error.message.length > 0) {
-      return error.message;
+    const status = error.response?.status;
+    if (!error.response) {
+      return 'Unable to reach the server. Please check your connection and try again.';
+    }
+
+    if (status === 400) {
+      return 'The request could not be processed. Please review your input and try again.';
+    }
+
+    if (status === 401) {
+      return 'Your session expired or is no longer valid. Please sign in again.';
+    }
+
+    if (status === 403) {
+      return 'You do not have permission to perform this action.';
+    }
+
+    if (status === 404) {
+      return 'The requested resource could not be found.';
+    }
+
+    if (status != null && status >= 500) {
+      return 'The server ran into an error. Please try again in a moment.';
+    }
+
+    if (typeof error.message === 'string' && error.message.trim().length > 0) {
+      return error.message.trim();
     }
   }
 
-  return error instanceof Error ? error.message : 'Request failed';
+  return error instanceof Error && error.message.trim().length > 0 ? error.message.trim() : 'Request failed';
 }
 
 function triggerBlobDownload(blob: Blob, filename: string) {
@@ -314,8 +372,12 @@ export async function login(payload: LoginPayload) {
 }
 
 export async function fetchHealth() {
-  const { data } = await api.get<HealthResponse>('/health');
-  return data;
+  try {
+    const { data } = await api.get<HealthResponse>('/health');
+    return data;
+  } catch (error) {
+    throw new Error(normalizeErrorMessage(error));
+  }
 }
 
 export async function fetchLatestPrice(ticker: string) {

@@ -31,17 +31,17 @@ router.get('/positions', async (req, res, next) => {
   }
 });
 
-router.get('/realized', (req, res, next) => {
+router.get('/realized', async (req, res, next) => {
   try {
-    res.json(getRealizedAnalytics(req.user!.userId));
+    res.json(await getRealizedAnalytics(req.user!.userId));
   } catch (error) {
     next(error);
   }
 });
 
-router.get('/performance', (req, res, next) => {
+router.get('/performance', async (req, res, next) => {
   try {
-    res.json(getPerformanceAnalytics(req.user!.userId));
+    res.json(await getPerformanceAnalytics(req.user!.userId));
   } catch (error) {
     next(error);
   }

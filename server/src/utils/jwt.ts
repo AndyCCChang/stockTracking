@@ -1,8 +1,9 @@
 import jwt, { type Secret, type SignOptions } from 'jsonwebtoken';
+import { env } from '../config/env.js';
 import { UnauthorizedError } from '../lib/errors.js';
 import type { AuthTokenPayload } from '../types.js';
 
-const JWT_SECRET: Secret = process.env.JWT_SECRET || 'stock-tracking-dev-secret';
+const JWT_SECRET: Secret = env.jwtSecret;
 const JWT_EXPIRES_IN: SignOptions['expiresIn'] = '7d';
 
 export function signAuthToken(payload: AuthTokenPayload) {

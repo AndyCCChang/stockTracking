@@ -1,6 +1,6 @@
 import { getDatabaseStatus, initializeDatabase } from '../db/database.js';
 
-initializeDatabase();
+await initializeDatabase();
 
-const database = getDatabaseStatus();
-console.log(`Database initialized at ${database.file}`);
+const database = await getDatabaseStatus();
+console.log(`Database initialized: ${database.database}`);
