@@ -190,6 +190,7 @@ export function getOpenLots(
       const allocatedQuantity = allocatedByBuyTradeId.get(trade.id) ?? 0;
       return {
         buyTradeId: trade.id,
+        broker: trade.broker,
         ticker: trade.ticker,
         tradeDate: trade.tradeDate,
         originalQuantity: trade.quantity,
@@ -220,6 +221,7 @@ export function buildAllocationPlan(
     if (trade.type === 'BUY') {
       tickerLots.push({
         buyTradeId: trade.id,
+        broker: trade.broker,
         ticker: trade.ticker,
         tradeDate: trade.tradeDate,
         originalQuantity: trade.quantity,
@@ -290,6 +292,7 @@ export function calculateRealizedPnLFromAllocations(
       return {
         sellTradeId: sellTrade.id,
         buyTradeId: buyTrade.id,
+        broker: sellTrade.broker,
         sellDate: sellTrade.tradeDate,
         buyTradeDate: allocation.buyTradeDateSnapshot ?? buyTrade.tradeDate,
         ticker: sellTrade.ticker,
@@ -322,13 +325,14 @@ export function calculateOpenPositionsFromLots(
   const grouped = new Map<string, AvailableLot[]>();
 
   for (const lot of openLots) {
-    const current = grouped.get(lot.ticker) ?? [];
+    const groupKey = `${lot.broker}\u0000${lot.ticker}`;
+    const current = grouped.get(groupKey) ?? [];
     current.push(lot);
-    grouped.set(lot.ticker, current);
+    grouped.set(groupKey, current);
   }
 
   return [...grouped.entries()]
-    .map(([ticker, lots]) => {
+    .map(([, lots]) => {
       const quantity = lots.reduce((sum, lot) => sum + lot.availableQuantity, 0);
       const totalCost = lots.reduce(
         (sum, lot) => sum + (lot.price + lot.fee / lot.originalQuantity) * lot.availableQuantity,
@@ -336,7 +340,8 @@ export function calculateOpenPositionsFromLots(
       );
 
       return {
-        ticker,
+        broker: lots[0]?.broker ?? 'Unassigned',
+        ticker: lots[0]?.ticker ?? '',
         quantity,
         averageCost: quantity === 0 ? 0 : totalCost / quantity,
         totalCost,
@@ -345,7 +350,7 @@ export function calculateOpenPositionsFromLots(
       } satisfies PositionSummary;
     })
     .filter((position) => position.quantity > 0)
-    .sort((left, right) => left.ticker.localeCompare(right.ticker));
+    .sort((left, right) => left.broker.localeCompare(right.broker) || left.ticker.localeCompare(right.ticker));
 }
 
 export async function calculateUnrealizedPnL(
@@ -360,6 +365,7 @@ export async function calculateUnrealizedPnL(
       const marketValue = marketPrice == null ? null : marketPrice * position.quantity;
       const unrealizedPnL = marketValue == null ? null : marketValue - position.totalCost;
       return {
+        broker: position.broker,
         ticker: position.ticker,
         quantity: position.quantity,
         marketPrice,

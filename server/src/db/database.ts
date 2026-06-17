@@ -2,7 +2,7 @@ import { newDb } from 'pg-mem';
 import { Pool, type PoolClient, type QueryResult, type QueryResultRow } from 'pg';
 import { env } from '../config/env.js';
 import { AppError, ServiceUnavailableError } from '../lib/errors.js';
-import { appMetaSchema, tradeTableSchema, userTableSchema } from './schema.js';
+import { appMetaSchema, tradeTableMigrations, tradeTableSchema, userTableSchema } from './schema.js';
 
 export type Queryable = Pick<Pool, 'query'> | Pick<PoolClient, 'query'>;
 
@@ -36,6 +36,7 @@ async function runSchemaSetup(client: Queryable) {
   await client.query(appMetaSchema);
   await client.query(userTableSchema);
   await client.query(tradeTableSchema);
+  await client.query(tradeTableMigrations);
   await client.query(
     `INSERT INTO app_meta (key, value)
      VALUES ('initializedAt', $1)

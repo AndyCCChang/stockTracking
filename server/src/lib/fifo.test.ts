@@ -25,6 +25,7 @@ function createTrade(overrides: Partial<TradeRecord>): TradeRecord {
     quantity: overrides.quantity ?? 10,
     price: overrides.price ?? 100,
     fee: overrides.fee ?? 0,
+    broker: overrides.broker ?? 'Unassigned',
     notes: overrides.notes ?? null,
     currency: overrides.currency ?? 'USD',
     lotSelectionMethod: overrides.lotSelectionMethod ?? 'FIFO',
@@ -99,6 +100,7 @@ test('Specific allocation quantity total must equal SELL quantity', () => {
     () => validateLotAllocations(sellTrade, [{ buyTradeId: 1, quantity: 5 }], [
       {
         buyTradeId: 1,
+        broker: 'Unassigned',
         ticker: 'NVDA',
         tradeDate: '2025-01-01',
         originalQuantity: 10,
@@ -120,6 +122,7 @@ test('Specific allocation cannot exceed available lot quantity', () => {
     () => validateLotAllocations(sellTrade, [{ buyTradeId: 1, quantity: 7 }], [
       {
         buyTradeId: 1,
+        broker: 'Unassigned',
         ticker: 'NVDA',
         tradeDate: '2025-01-01',
         originalQuantity: 10,

@@ -14,6 +14,11 @@ function formatPercent(value: number) {
   return `${(value * 100).toFixed(2)}%`;
 }
 
+function normalizeBroker(value: string | null | undefined) {
+  const broker = value?.trim();
+  return broker && broker.length > 0 ? broker : 'Unassigned';
+}
+
 export function RealizedPnLPage() {
   const [items, setItems] = useState<RealizedTradeItem[]>([]);
   const [expandedIds, setExpandedIds] = useState<number[]>([]);
@@ -45,6 +50,23 @@ export function RealizedPnLPage() {
       totalClosedQuantity,
       closedTrades: items.length
     };
+  }, [items]);
+
+  const brokerGroups = useMemo(() => {
+    const groups = new Map<string, RealizedTradeItem[]>();
+    for (const item of items) {
+      const broker = normalizeBroker(item.broker);
+      groups.set(broker, [...(groups.get(broker) ?? []), item]);
+    }
+
+    return [...groups.entries()]
+      .map(([broker, brokerItems]) => ({
+        broker,
+        items: brokerItems,
+        realizedPnL: brokerItems.reduce((sum, item) => sum + item.realizedPnL, 0),
+        quantity: brokerItems.reduce((sum, item) => sum + item.quantity, 0)
+      }))
+      .sort((left, right) => left.broker.localeCompare(right.broker));
   }, [items]);
 
   function toggleExpanded(sellTradeId: number) {
@@ -85,11 +107,16 @@ export function RealizedPnLPage() {
       ) : null}
 
       <div className="rounded-3xl border border-white/10 bg-white/5">
+        <div className="border-b border-white/10 px-5 py-4">
+          <h3 className="text-lg font-semibold text-white">All Brokers Realized PnL</h3>
+          <p className="mt-1 text-sm text-slate-400">Combined closed SELL records across every broker.</p>
+        </div>
         <div className="overflow-x-auto">
           <table className="min-w-full text-sm">
             <thead className="border-b border-white/10 bg-slate-950/40 text-left text-xs uppercase tracking-[0.22em] text-slate-400">
               <tr>
                 <th className="px-4 py-3">Sell</th>
+                <th className="px-4 py-3">Broker</th>
                 <th className="px-4 py-3">Ticker</th>
                 <th className="px-4 py-3">Method</th>
                 <th className="px-4 py-3">Quantity</th>
@@ -104,13 +131,13 @@ export function RealizedPnLPage() {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={10} className="px-4 py-10 text-center text-slate-400">
+                  <td colSpan={11} className="px-4 py-10 text-center text-slate-400">
                     Loading realized records...
                   </td>
                 </tr>
               ) : items.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="px-4 py-10 text-center text-slate-400">
+                  <td colSpan={11} className="px-4 py-10 text-center text-slate-400">
                     No realized trades yet.
                   </td>
                 </tr>
@@ -131,6 +158,67 @@ export function RealizedPnLPage() {
           </table>
         </div>
       </div>
+
+      {!loading && brokerGroups.length > 0 ? (
+        <section className="space-y-4">
+          <div>
+            <h3 className="text-lg font-semibold text-white">Broker Realized PnL Tables</h3>
+            <p className="mt-1 text-sm text-slate-400">Separated realized PnL views for each broker.</p>
+          </div>
+          {brokerGroups.map((group) => (
+            <div key={group.broker} className="rounded-3xl border border-white/10 bg-white/5">
+              <div className="flex flex-col gap-2 border-b border-white/10 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <h4 className="text-base font-semibold text-white">{group.broker} Realized PnL</h4>
+                  <p className="mt-1 text-sm text-slate-400">
+                    {group.items.length} closed trade{group.items.length === 1 ? '' : 's'}, {group.quantity.toFixed(2)} shares closed.
+                  </p>
+                </div>
+                <div className={`text-sm font-semibold ${group.realizedPnL >= 0 ? 'text-emerald-300' : 'text-rose-300'}`}>
+                  {formatCurrency(group.realizedPnL)}
+                </div>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-sm">
+                  <thead className="border-b border-white/10 bg-slate-950/40 text-left text-xs uppercase tracking-[0.22em] text-slate-400">
+                    <tr>
+                      <th className="px-4 py-3">Sell</th>
+                      <th className="px-4 py-3">Ticker</th>
+                      <th className="px-4 py-3">Method</th>
+                      <th className="px-4 py-3">Quantity</th>
+                      <th className="px-4 py-3">Avg Cost</th>
+                      <th className="px-4 py-3">Sell Price</th>
+                      <th className="px-4 py-3">Fee</th>
+                      <th className="px-4 py-3">Realized</th>
+                      <th className="px-4 py-3">Return</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {group.items.map((item) => (
+                      <tr key={`${group.broker}-${item.sellTradeId}`} className="border-b border-white/10 text-slate-200 last:border-b-0">
+                        <td className="px-4 py-4">
+                          <div className="font-medium text-white">#{item.sellTradeId}</div>
+                          <div className="mt-1 text-xs text-slate-500">{dayjs(item.sellDate).format('YYYY-MM-DD')}</div>
+                        </td>
+                        <td className="px-4 py-4 font-medium text-white">{item.ticker}</td>
+                        <td className="px-4 py-4">{item.lotSelectionMethod}</td>
+                        <td className="px-4 py-4">{item.quantity.toFixed(2)}</td>
+                        <td className="px-4 py-4">{formatCurrency(item.averageCost, item.currency)}</td>
+                        <td className="px-4 py-4">{formatCurrency(item.sellPrice, item.currency)}</td>
+                        <td className="px-4 py-4">{formatCurrency(item.fee, item.currency)}</td>
+                        <td className={`px-4 py-4 font-semibold ${item.realizedPnL >= 0 ? 'text-emerald-300' : 'text-rose-300'}`}>
+                          {formatCurrency(item.realizedPnL, item.currency)}
+                        </td>
+                        <td className="px-4 py-4">{formatPercent(item.returnRate)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ))}
+        </section>
+      ) : null}
     </section>
   );
 }
@@ -148,6 +236,9 @@ function FragmentRow({ item, isExpanded, onToggle }: FragmentRowProps) {
         <td className="px-4 py-4">
           <div className="font-medium text-white">#{item.sellTradeId}</div>
           <div className="mt-1 text-xs text-slate-500">{dayjs(item.sellDate).format('YYYY-MM-DD')}</div>
+        </td>
+        <td className="px-4 py-4">
+          <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-xs font-medium text-slate-200">{normalizeBroker(item.broker)}</span>
         </td>
         <td className="px-4 py-4 font-medium text-white">{item.ticker}</td>
         <td className="px-4 py-4">
@@ -175,7 +266,7 @@ function FragmentRow({ item, isExpanded, onToggle }: FragmentRowProps) {
       </tr>
       {isExpanded ? (
         <tr className="border-b border-white/10 bg-slate-950/35">
-          <td colSpan={10} className="px-4 py-4">
+          <td colSpan={11} className="px-4 py-4">
             <div className="overflow-x-auto rounded-2xl border border-white/10 bg-slate-950/50">
               <table className="min-w-full text-sm text-slate-300">
                 <thead className="border-b border-white/10 text-left text-xs uppercase tracking-[0.22em] text-slate-500">

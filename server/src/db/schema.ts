@@ -28,6 +28,7 @@ export const tradeTableSchema = `
     quantity DOUBLE PRECISION NOT NULL,
     price DOUBLE PRECISION NOT NULL,
     fee DOUBLE PRECISION NOT NULL DEFAULT 0,
+    broker TEXT NOT NULL DEFAULT 'Unassigned',
     notes TEXT,
     currency TEXT NOT NULL DEFAULT 'USD',
     "lotSelectionMethod" TEXT NOT NULL DEFAULT 'FIFO' CHECK("lotSelectionMethod" IN ('FIFO', 'SPECIFIC')),
@@ -47,8 +48,16 @@ export const tradeTableSchema = `
 
   CREATE INDEX IF NOT EXISTS idx_trades_user_id ON trades("userId");
   CREATE INDEX IF NOT EXISTS idx_trades_ticker ON trades(ticker);
+  CREATE INDEX IF NOT EXISTS idx_trades_broker ON trades(broker);
   CREATE INDEX IF NOT EXISTS idx_trades_trade_date ON trades("tradeDate");
   CREATE INDEX IF NOT EXISTS idx_trades_type ON trades(type);
   CREATE INDEX IF NOT EXISTS idx_allocations_sell_trade_id ON trade_lot_allocations("sellTradeId");
   CREATE INDEX IF NOT EXISTS idx_allocations_buy_trade_id ON trade_lot_allocations("buyTradeId");
+`;
+
+export const tradeTableMigrations = `
+  ALTER TABLE trades
+    ADD COLUMN IF NOT EXISTS broker TEXT NOT NULL DEFAULT 'Unassigned';
+
+  CREATE INDEX IF NOT EXISTS idx_trades_broker ON trades(broker);
 `;

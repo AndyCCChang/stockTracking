@@ -50,6 +50,14 @@ function normalizeTicker(value: unknown) {
   return value.trim().toUpperCase();
 }
 
+function normalizeBroker(value: unknown) {
+  if (typeof value !== 'string') {
+    return 'Unassigned';
+  }
+
+  const broker = value.trim();
+  return broker.length > 0 ? broker : 'Unassigned';
+}
 
 function normalizeEmail(value: unknown) {
   if (typeof value !== 'string' || value.trim().length === 0) {
@@ -165,6 +173,7 @@ export function validateTradeInput(payload: unknown): TradeInput {
     quantity: toPositiveNumber(input.quantity, 'quantity'),
     price: toPositiveNumber(input.price, 'price'),
     fee: toNonNegativeNumber(input.fee, 'fee'),
+    broker: normalizeBroker(input.broker),
     notes: typeof input.notes === 'string' ? input.notes.trim() : input.notes == null ? null : String(input.notes),
     currency: typeof input.currency === 'string' && input.currency.trim() ? input.currency.trim().toUpperCase() : 'USD',
     lotSelectionMethod,
@@ -208,6 +217,7 @@ export function validateTradeImportRows(payload: unknown): CsvTradeImportRow[] {
       quantity: toPositiveNumber(record.quantity, `Import row ${index + 1} quantity`),
       price: toPositiveNumber(record.price, `Import row ${index + 1} price`),
       fee: toNonNegativeNumber(record.fee, `Import row ${index + 1} fee`),
+      broker: normalizeBroker(record.broker),
       notes: typeof record.notes === 'string' ? record.notes.trim() : record.notes == null ? null : String(record.notes),
       currency: typeof record.currency === 'string' && record.currency.trim() ? record.currency.trim().toUpperCase() : 'USD',
       lotSelectionMethod,
@@ -256,6 +266,7 @@ function parseSortOrder(value: string | undefined): SortOrder {
 
 export function validateTradeFilters(query: Record<string, string | undefined>): TradeFilters {
   const ticker = query.ticker?.trim().toUpperCase();
+  const broker = query.broker?.trim();
   const type = query.type ? toTradeType(query.type) : undefined;
   const startDate = query.startDate?.trim();
   const endDate = query.endDate?.trim();
@@ -270,6 +281,7 @@ export function validateTradeFilters(query: Record<string, string | undefined>):
 
   return {
     ticker: ticker || undefined,
+    broker: broker || undefined,
     type,
     startDate,
     endDate,

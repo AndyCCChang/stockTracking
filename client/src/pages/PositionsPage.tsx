@@ -12,6 +12,7 @@ import {
 
 type EditableLot = {
   id: number;
+  broker: string;
   ticker: string;
   tradeDate: string;
   quantity: number;
@@ -63,6 +64,8 @@ const QUANTITY_EPSILON = 0.000001;
 const PRICE_REFRESH_INTERVAL_MS = 120_000;
 const PIE_COLORS = ['#34d399', '#38bdf8', '#f59e0b', '#f87171', '#a78bfa', '#facc15', '#fb7185', '#22c55e'];
 
+type PositionSummaryStats = ReturnType<typeof buildPositionSummary>;
+
 function formatCurrency(value: number | null, currency = 'USD') {
   if (value == null) {
     return 'N/A';
@@ -87,6 +90,19 @@ function formatQuantity(value: number) {
   return value.toFixed(2);
 }
 
+function normalizeBroker(value: string | null | undefined) {
+  const broker = value?.trim();
+  return broker && broker.length > 0 ? broker : 'Unassigned';
+}
+
+function getPositionKey(item: Pick<PositionItem, 'broker' | 'ticker'>) {
+  return `${normalizeBroker(item.broker)}\u0000${item.ticker}`;
+}
+
+function getLotKey(lot: Pick<EditableLot, 'broker' | 'ticker'>) {
+  return `${normalizeBroker(lot.broker)}\u0000${lot.ticker}`;
+}
+
 function sumNullable(values: Array<number | null>) {
   let sum = 0;
 
@@ -99,6 +115,28 @@ function sumNullable(values: Array<number | null>) {
   }
 
   return sum;
+}
+
+function buildPositionSummary(sourceItems: PositionItem[]) {
+  const totalQuantity = sourceItems.reduce((sum, item) => sum + item.quantity, 0);
+  const totalCostBasis = sourceItems.reduce((sum, item) => sum + item.costBasis, 0);
+  const totalMarketValue = sumNullable(sourceItems.map((item) => item.marketValue));
+  const totalUnrealizedPnL = sumNullable(sourceItems.map((item) => item.unrealizedPnL));
+  const totalTodaysPnL = sumNullable(sourceItems.map((item) => item.todaysPnL));
+  const totalLots = sourceItems.reduce((sum, item) => sum + item.openLotsCount, 0);
+
+  return {
+    totalQuantity,
+    totalCostBasis,
+    totalMarketValue,
+    totalUnrealizedPnL,
+    totalTodaysPnL,
+    totalLots,
+    hasUnavailablePrices: sourceItems.some(
+      (item) => item.latestPrice == null || item.marketValue == null || item.unrealizedPnL == null || item.todaysPnL == null
+    ),
+    totalReturnRate: totalUnrealizedPnL == null ? null : totalCostBasis === 0 ? 0 : totalUnrealizedPnL / totalCostBasis
+  };
 }
 
 function getTone(value: number | null) {
@@ -131,6 +169,7 @@ function buildEditableLots(trades: TradeRecord[]) {
 
       return {
         id: trade.id,
+        broker: normalizeBroker(trade.broker),
         ticker: trade.ticker,
         tradeDate: trade.tradeDate,
         quantity: trade.quantity,
@@ -185,7 +224,7 @@ export function PositionsPage() {
   const [trades, setTrades] = useState<TradeRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [expandedTicker, setExpandedTicker] = useState<string | null>(null);
+  const [expandedPositionKey, setExpandedPositionKey] = useState<string | null>(null);
   const [editingLotId, setEditingLotId] = useState<number | null>(null);
   const [lotForm, setLotForm] = useState<LotFormState | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -240,37 +279,18 @@ export function PositionsPage() {
 
   const editableLots = useMemo(() => buildEditableLots(trades), [trades]);
 
-  const lotsByTicker = useMemo(() => {
+  const lotsByPositionKey = useMemo(() => {
     const result = new Map<string, EditableLot[]>();
     for (const lot of editableLots) {
-      const current = result.get(lot.ticker) ?? [];
+      const key = getLotKey(lot);
+      const current = result.get(key) ?? [];
       current.push(lot);
-      result.set(lot.ticker, current);
+      result.set(key, current);
     }
     return result;
   }, [editableLots]);
 
-  const summary = useMemo(() => {
-    const totalQuantity = items.reduce((sum, item) => sum + item.quantity, 0);
-    const totalCostBasis = items.reduce((sum, item) => sum + item.costBasis, 0);
-    const totalMarketValue = sumNullable(items.map((item) => item.marketValue));
-    const totalUnrealizedPnL = sumNullable(items.map((item) => item.unrealizedPnL));
-    const totalTodaysPnL = sumNullable(items.map((item) => item.todaysPnL));
-    const totalLots = items.reduce((sum, item) => sum + item.openLotsCount, 0);
-
-    return {
-      totalQuantity,
-      totalCostBasis,
-      totalMarketValue,
-      totalUnrealizedPnL,
-      totalTodaysPnL,
-      totalLots,
-      hasUnavailablePrices: items.some(
-        (item) => item.latestPrice == null || item.marketValue == null || item.unrealizedPnL == null || item.todaysPnL == null
-      ),
-      totalReturnRate: totalUnrealizedPnL == null ? null : totalCostBasis === 0 ? 0 : totalUnrealizedPnL / totalCostBasis
-    };
-  }, [items]);
+  const summary = useMemo(() => buildPositionSummary(items), [items]);
 
 
   const compositionData = useMemo(() => {
@@ -297,12 +317,12 @@ export function PositionsPage() {
   );
 
 
-  const sortedItems = useMemo(() => {
-    const sorted = [...items].sort((left, right) => {
+  function sortPositionItems(sourceItems: PositionItem[]) {
+    return [...sourceItems].sort((left, right) => {
       const multiplier = sort.direction === 'asc' ? 1 : -1;
 
       if (sort.key === 'ticker') {
-        return left.ticker.localeCompare(right.ticker) * multiplier;
+        return (left.ticker.localeCompare(right.ticker) || normalizeBroker(left.broker).localeCompare(normalizeBroker(right.broker))) * multiplier;
       }
 
       const leftValue = left[sort.key];
@@ -330,8 +350,20 @@ export function PositionsPage() {
 
       return left.ticker.localeCompare(right.ticker);
     });
+  }
 
-    return sorted;
+  const sortedItems = useMemo(() => sortPositionItems(items), [items, sort]);
+
+  const brokerGroups = useMemo(() => {
+    const groups = new Map<string, PositionItem[]>();
+    for (const item of items) {
+      const broker = normalizeBroker(item.broker);
+      groups.set(broker, [...(groups.get(broker) ?? []), item]);
+    }
+
+    return [...groups.entries()]
+      .map(([broker, brokerItems]) => ({ broker, items: sortPositionItems(brokerItems), summary: buildPositionSummary(brokerItems) }))
+      .sort((left, right) => left.broker.localeCompare(right.broker));
   }, [items, sort]);
 
   function toggleSort(key: PositionSortKey) {
@@ -355,15 +387,16 @@ export function PositionsPage() {
     setLotForm(null);
   }
 
-  function toggleTicker(ticker: string) {
-    setExpandedTicker((current) => (current === ticker ? null : ticker));
+  function togglePosition(item: PositionItem) {
+    const key = getPositionKey(item);
+    setExpandedPositionKey((current) => (current === key ? null : key));
     setActionError(null);
     setActionMessage(null);
     resetLotEditor();
   }
 
   function startEditing(lot: EditableLot) {
-    setExpandedTicker(lot.ticker);
+    setExpandedPositionKey(getLotKey(lot));
     setEditingLotId(lot.id);
     setLotForm(createLotFormState(lot));
     setActionError(null);
@@ -405,6 +438,7 @@ export function PositionsPage() {
     }
 
     const payload: TradePayload = {
+      broker: normalizeBroker(lot.broker),
       ticker: lot.ticker,
       tradeDate: lotForm.tradeDate,
       type: 'BUY',
@@ -423,7 +457,7 @@ export function PositionsPage() {
       setActionMessage(`Updated BUY lot #${lot.id} for ${lot.ticker}.`);
       resetLotEditor();
       await loadData();
-      setExpandedTicker(lot.ticker);
+      setExpandedPositionKey(getLotKey(lot));
     } catch (saveError) {
       setActionError(saveError instanceof Error ? saveError.message : 'Failed to update lot');
     } finally {
@@ -446,7 +480,7 @@ export function PositionsPage() {
         resetLotEditor();
       }
       await loadData();
-      setExpandedTicker(lot.ticker);
+      setExpandedPositionKey(getLotKey(lot));
     } catch (deleteError) {
       setActionError(deleteError instanceof Error ? deleteError.message : 'Failed to delete lot');
     } finally {
@@ -612,11 +646,17 @@ export function PositionsPage() {
       </section>
 
       <div className="rounded-3xl border border-white/10 bg-white/5">
+        <div className="border-b border-white/10 px-5 py-4">
+          <h3 className="text-lg font-semibold text-white">All Brokers Positions</h3>
+          <p className="mt-1 text-sm text-slate-400">Combined open positions across every broker.</p>
+        </div>
+        <PositionTableTotals summary={summary} />
         <div className="overflow-x-auto">
           <table className="min-w-full text-sm">
             <thead className="border-b border-white/10 bg-slate-950/40 text-left text-xs uppercase tracking-[0.22em] text-slate-400">
               <tr>
                 <th className="px-4 py-3">Actions</th>
+                <th className="px-4 py-3">Broker</th>
                 <th className="px-4 py-3">
                   <button type="button" onClick={() => toggleSort('ticker')} className="whitespace-nowrap text-left transition hover:text-white">
                     {`Ticker${renderSortIndicator(sort.key === 'ticker', sort.direction)}`}
@@ -672,31 +712,35 @@ export function PositionsPage() {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={11} className="px-4 py-10 text-center text-slate-400">
+                  <td colSpan={12} className="px-4 py-10 text-center text-slate-400">
                     Loading positions...
                   </td>
                 </tr>
               ) : items.length === 0 ? (
                 <tr>
-                  <td colSpan={11} className="px-4 py-10 text-center text-slate-400">
+                  <td colSpan={12} className="px-4 py-10 text-center text-slate-400">
                     No open positions right now.
                   </td>
                 </tr>
               ) : (
                 sortedItems.flatMap((item) => {
-                  const lots = lotsByTicker.get(item.ticker) ?? [];
-                  const isExpanded = expandedTicker === item.ticker;
+                  const positionKey = getPositionKey(item);
+                  const lots = lotsByPositionKey.get(positionKey) ?? [];
+                  const isExpanded = expandedPositionKey === positionKey;
 
                   return [
-                    <tr key={item.ticker} className="border-b border-white/10 text-slate-200 last:border-b-0">
+                    <tr key={positionKey} className="border-b border-white/10 text-slate-200 last:border-b-0">
                       <td className="px-4 py-4">
                         <button
                           type="button"
-                          onClick={() => toggleTicker(item.ticker)}
+                          onClick={() => togglePosition(item)}
                           className="rounded-full border border-emerald-300/30 bg-emerald-400/10 px-3 py-1.5 text-xs font-medium text-emerald-200 transition hover:bg-emerald-400/20"
                         >
                           {isExpanded ? 'Hide Lots' : 'Manage Lots'}
                         </button>
+                      </td>
+                      <td className="px-4 py-4">
+                        <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-xs font-medium text-slate-200">{normalizeBroker(item.broker)}</span>
                       </td>
                       <td className="px-4 py-4">
                         <div className="font-medium text-white">{item.ticker}</div>
@@ -720,12 +764,12 @@ export function PositionsPage() {
                       <td className="px-4 py-4">{item.openLotsCount}</td>
                     </tr>,
                     isExpanded ? (
-                      <tr key={`${item.ticker}-editor`} className="border-b border-white/10 bg-slate-950/20 text-slate-200 last:border-b-0">
-                        <td colSpan={11} className="px-4 py-5">
+                      <tr key={`${positionKey}-editor`} className="border-b border-white/10 bg-slate-950/20 text-slate-200 last:border-b-0">
+                        <td colSpan={12} className="px-4 py-5">
                           <div className="space-y-4">
                             <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
                               <div>
-                                <h3 className="text-base font-semibold text-white">Manage {item.ticker} Open Lots</h3>
+                                <h3 className="text-base font-semibold text-white">Manage {normalizeBroker(item.broker)} {item.ticker} Open Lots</h3>
                                 <p className="mt-1 text-sm text-slate-400">
                                   Edit the underlying BUY lots that still have open shares. Delete is limited to fully unallocated lots.
                                 </p>
@@ -890,6 +934,60 @@ export function PositionsPage() {
           </table>
         </div>
       </div>
+
+      {!loading && brokerGroups.length > 0 ? (
+        <section className="space-y-4">
+          <div>
+            <h3 className="text-lg font-semibold text-white">Broker Position Tables</h3>
+            <p className="mt-1 text-sm text-slate-400">Separated position views for each broker.</p>
+          </div>
+          {brokerGroups.map((group) => (
+            <div key={group.broker} className="rounded-3xl border border-white/10 bg-white/5">
+              <div className="flex flex-col gap-2 border-b border-white/10 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <h4 className="text-base font-semibold text-white">{group.broker} Positions</h4>
+                  <p className="mt-1 text-sm text-slate-400">{group.items.length} open ticker{group.items.length === 1 ? '' : 's'} in this broker.</p>
+                </div>
+              </div>
+              <PositionTableTotals summary={group.summary} />
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-sm">
+                  <thead className="border-b border-white/10 bg-slate-950/40 text-left text-xs uppercase tracking-[0.22em] text-slate-400">
+                    <tr>
+                      <th className="px-4 py-3">Ticker</th>
+                      <th className="px-4 py-3">Quantity</th>
+                      <th className="px-4 py-3">Avg Cost</th>
+                      <th className="px-4 py-3">Latest Price</th>
+                      <th className="px-4 py-3">Cost Basis</th>
+                      <th className="px-4 py-3">Market Value</th>
+                      <th className="px-4 py-3">Unrealized</th>
+                      <th className="px-4 py-3">Today</th>
+                      <th className="px-4 py-3">Return</th>
+                      <th className="px-4 py-3">Open Lots</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {group.items.map((item) => (
+                      <tr key={getPositionKey(item)} className="border-b border-white/10 text-slate-200 last:border-b-0">
+                        <td className="px-4 py-4 font-medium text-white">{item.ticker}</td>
+                        <td className="px-4 py-4">{item.quantity.toFixed(2)}</td>
+                        <td className="px-4 py-4">{formatCurrency(item.averageCost, item.currency)}</td>
+                        <td className="px-4 py-4">{formatCurrency(item.latestPrice, item.currency)}</td>
+                        <td className="px-4 py-4">{formatCurrency(item.costBasis, item.currency)}</td>
+                        <td className="px-4 py-4">{formatCurrency(item.marketValue, item.currency)}</td>
+                        <td className={`px-4 py-4 font-semibold ${getTone(item.unrealizedPnL)}`}>{formatCurrency(item.unrealizedPnL, item.currency)}</td>
+                        <td className={`px-4 py-4 font-semibold ${getTone(item.todaysPnL)}`}>{formatCurrency(item.todaysPnL, item.currency)}</td>
+                        <td className={`px-4 py-4 ${getTone(item.unrealizedReturnRate)}`}>{formatPercent(item.unrealizedReturnRate)}</td>
+                        <td className="px-4 py-4">{item.openLotsCount}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ))}
+        </section>
+      ) : null}
     </section>
   );
 }
@@ -904,6 +1002,18 @@ function Metric({ label, value }: MetricProps) {
     <div className="rounded-2xl border border-white/10 bg-slate-950/40 px-3 py-2">
       <p className="text-[11px] uppercase tracking-[0.22em] text-slate-500">{label}</p>
       <p className="mt-2 text-sm font-semibold text-white">{value}</p>
+    </div>
+  );
+}
+
+function PositionTableTotals({ summary }: { summary: PositionSummaryStats }) {
+  return (
+    <div className="grid gap-3 border-b border-white/10 bg-slate-950/25 px-5 py-4 sm:grid-cols-2 xl:grid-cols-5">
+      <Metric label="Total Cost Basis" value={formatCurrency(summary.totalCostBasis)} />
+      <Metric label="Market Value" value={formatCurrency(summary.totalMarketValue)} />
+      <Metric label="Unrealized" value={formatCurrency(summary.totalUnrealizedPnL)} />
+      <Metric label="Today" value={formatCurrency(summary.totalTodaysPnL)} />
+      <Metric label="Return" value={formatPercent(summary.totalReturnRate)} />
     </div>
   );
 }

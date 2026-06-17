@@ -123,6 +123,7 @@ function resolveCsvTradeInput(row: CsvTradeImportRow, importRefMap: Map<string, 
     quantity: row.quantity,
     price: row.price,
     fee: row.fee,
+    broker: row.broker,
     notes: row.notes,
     currency: row.currency,
     lotSelectionMethod: row.lotSelectionMethod,
@@ -193,9 +194,10 @@ export async function importTradesWithValidation(userId: number, rows: CsvTradeI
 export async function exportTradesAsCsv(userId: number) {
   const trades = await getAllTrades(userId);
   return toCsv(
-    ['id', 'ticker', 'tradeDate', 'type', 'quantity', 'price', 'fee', 'notes', 'currency', 'lotSelectionMethod', 'allocations'],
+    ['id', 'broker', 'ticker', 'tradeDate', 'type', 'quantity', 'price', 'fee', 'notes', 'currency', 'lotSelectionMethod', 'allocations'],
     trades.map((trade) => ({
       id: trade.id,
+      broker: trade.broker,
       ticker: trade.ticker,
       tradeDate: trade.tradeDate,
       type: trade.type,

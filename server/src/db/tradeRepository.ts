@@ -19,6 +19,7 @@ const sortColumnMap: Record<TradeSortField, string> = {
   quantity: 'quantity',
   price: 'price',
   fee: 'fee',
+  broker: 'broker',
   createdAt: '"createdAt"',
   updatedAt: '"updatedAt"'
 };
@@ -41,6 +42,7 @@ function mapTradeRow(row: TradeRow): TradeRecord {
     quantity: Number(row.quantity),
     price: Number(row.price),
     fee: Number(row.fee),
+    broker: row.broker ?? 'Unassigned',
     notes: row.notes ?? null,
     currency: row.currency,
     lotSelectionMethod: row.lotSelectionMethod as LotSelectionMethod,
@@ -103,6 +105,11 @@ export async function listTrades(userId: number, filters: TradeFilters, db?: Que
   if (filters.ticker) {
     values.push(filters.ticker);
     conditions.push(`ticker = $${values.length}`);
+  }
+
+  if (filters.broker) {
+    values.push(filters.broker);
+    conditions.push(`broker = $${values.length}`);
   }
 
   if (filters.type) {
@@ -188,8 +195,8 @@ export async function getAllTradeAllocations(userId: number, db?: Queryable) {
 export async function insertTrade(userId: number, input: TradeInput, db?: Queryable) {
   const now = new Date().toISOString();
   const result = await query<{ id: number }>(
-    `INSERT INTO trades ("userId", ticker, "tradeDate", type, quantity, price, fee, notes, currency, "lotSelectionMethod", "createdAt", "updatedAt")
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+    `INSERT INTO trades ("userId", ticker, "tradeDate", type, quantity, price, fee, broker, notes, currency, "lotSelectionMethod", "createdAt", "updatedAt")
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
      RETURNING id`,
     [
       userId,
@@ -199,6 +206,7 @@ export async function insertTrade(userId: number, input: TradeInput, db?: Querya
       input.quantity,
       input.price,
       input.fee ?? 0,
+      input.broker ?? 'Unassigned',
       input.notes ?? null,
       input.currency ?? 'USD',
       input.lotSelectionMethod ?? 'FIFO',
@@ -215,8 +223,8 @@ export async function updateTradeRow(id: number, input: TradeInput, db?: Queryab
   const now = new Date().toISOString();
   await query(
     `UPDATE trades
-     SET ticker = $1, "tradeDate" = $2, type = $3, quantity = $4, price = $5, fee = $6, notes = $7, currency = $8, "lotSelectionMethod" = $9, "updatedAt" = $10
-     WHERE id = $11`,
+     SET ticker = $1, "tradeDate" = $2, type = $3, quantity = $4, price = $5, fee = $6, broker = $7, notes = $8, currency = $9, "lotSelectionMethod" = $10, "updatedAt" = $11
+     WHERE id = $12`,
     [
       input.ticker,
       input.tradeDate,
@@ -224,6 +232,7 @@ export async function updateTradeRow(id: number, input: TradeInput, db?: Queryab
       input.quantity,
       input.price,
       input.fee ?? 0,
+      input.broker ?? 'Unassigned',
       input.notes ?? null,
       input.currency ?? 'USD',
       input.lotSelectionMethod ?? 'FIFO',

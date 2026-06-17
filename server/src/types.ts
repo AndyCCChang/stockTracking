@@ -8,6 +8,7 @@ export const TRADE_SORT_FIELDS = [
   'quantity',
   'price',
   'fee',
+  'broker',
   'createdAt',
   'updatedAt'
 ] as const;
@@ -89,6 +90,7 @@ export type TradeRecord = {
   quantity: number;
   price: number;
   fee: number;
+  broker: string;
   notes: string | null;
   currency: string;
   lotSelectionMethod: LotSelectionMethod;
@@ -104,6 +106,7 @@ export type TradeInput = {
   quantity: number;
   price: number;
   fee?: number;
+  broker?: string;
   notes?: string | null;
   currency?: string;
   lotSelectionMethod?: LotSelectionMethod;
@@ -118,6 +121,7 @@ export type CsvTradeImportRow = {
   quantity: number;
   price: number;
   fee?: number;
+  broker?: string;
   notes?: string | null;
   currency?: string;
   lotSelectionMethod?: LotSelectionMethod;
@@ -131,6 +135,7 @@ export type CsvTradeImportResult = {
 
 export type TradeFilters = {
   ticker?: string;
+  broker?: string;
   type?: TradeType;
   startDate?: string;
   endDate?: string;
@@ -152,6 +157,7 @@ export type TradeListResult = {
 
 export type AvailableLot = {
   buyTradeId: number;
+  broker: string;
   ticker: string;
   tradeDate: string;
   originalQuantity: number;
@@ -165,6 +171,7 @@ export type AvailableLot = {
 export type PositionLot = AvailableLot;
 
 export type PositionSummary = {
+  broker: string;
   ticker: string;
   quantity: number;
   averageCost: number;
@@ -176,6 +183,7 @@ export type PositionSummary = {
 export type RealizedMatch = {
   sellTradeId: number;
   buyTradeId: number;
+  broker: string;
   sellDate: string;
   buyTradeDate: string;
   ticker: string;
@@ -198,6 +206,7 @@ export type RealizedPnLResult = {
 };
 
 export type UnrealizedSummary = {
+  broker: string;
   ticker: string;
   quantity: number;
   marketPrice: number | null;
@@ -257,6 +266,7 @@ export type DashboardResponse = {
 };
 
 export type PositionApiItem = {
+  broker: string;
   ticker: string;
   quantity: number;
   averageCost: number;
@@ -282,6 +292,7 @@ export type RealizedAllocationApiItem = {
 
 export type RealizedApiItem = {
   sellTradeId: number;
+  broker: string;
   sellDate: string;
   ticker: string;
   quantity: number;

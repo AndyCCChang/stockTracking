@@ -74,6 +74,7 @@ export type TradeRecord = {
   quantity: number;
   price: number;
   fee: number;
+  broker: string;
   notes: string | null;
   currency: string;
   lotSelectionMethod: LotSelectionMethod;
@@ -99,6 +100,7 @@ export type TradePayload = {
   quantity: number;
   price: number;
   fee: number;
+  broker?: string;
   notes?: string | null;
   currency?: string;
   lotSelectionMethod?: LotSelectionMethod;
@@ -122,6 +124,7 @@ export type CsvTradeImportRow = {
   quantity: number;
   price: number;
   fee: number;
+  broker?: string;
   notes?: string | null;
   currency?: string;
   lotSelectionMethod?: LotSelectionMethod;
@@ -135,6 +138,7 @@ export type CsvTradeImportResult = {
 
 export type AvailableLot = {
   buyTradeId: number;
+  broker: string;
   tradeDate: string;
   ticker: string;
   originalQuantity: number;
@@ -155,6 +159,7 @@ export type RealizedAllocationItem = {
 
 export type RealizedTradeItem = {
   sellTradeId: number;
+  broker: string;
   sellDate: string;
   ticker: string;
   quantity: number;
@@ -169,6 +174,7 @@ export type RealizedTradeItem = {
 };
 
 export type PositionItem = {
+  broker: string;
   ticker: string;
   quantity: number;
   averageCost: number;

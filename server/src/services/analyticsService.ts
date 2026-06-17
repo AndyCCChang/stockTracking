@@ -59,6 +59,7 @@ function toPositionApiItem(item: UnrealizedSummary, openLotsCount: number, quote
     todayPerShareChange == null || previousClose == null || previousClose === 0 ? null : todayPerShareChange / previousClose;
 
   return {
+    broker: item.broker,
     ticker: item.ticker,
     quantity: round(item.quantity),
     averageCost: round(item.averageCost),
@@ -76,7 +77,7 @@ function toPositionApiItem(item: UnrealizedSummary, openLotsCount: number, quote
 }
 
 function buildOpenLotsCountMap(positions: PositionSummary[]) {
-  return new Map(positions.map((position) => [position.ticker, position.lots.length]));
+  return new Map(positions.map((position) => [`${position.broker}\u0000${position.ticker}`, position.lots.length]));
 }
 
 function buildRealizedItems(trades: TradeRecord[], allocations: TradeLotAllocationRecord[]): RealizedApiItem[] {
@@ -94,6 +95,7 @@ function buildRealizedItems(trades: TradeRecord[], allocations: TradeLotAllocati
     if (!existing) {
       grouped.set(match.sellTradeId, {
         sellTradeId: match.sellTradeId,
+        broker: match.broker,
         sellDate: match.sellDate,
         ticker: match.ticker,
         quantity: round(sellTrade.quantity),
@@ -229,7 +231,7 @@ export async function getPositionsAnalytics(userId: number): Promise<PositionApi
   const quotes = await Promise.all(unrealized.map(async (item) => [item.ticker, await getLatestPriceQuote(item.ticker)] as const));
   const quotesByTicker = new Map(quotes);
 
-  return unrealized.map((item) => toPositionApiItem(item, openLotsCountMap.get(item.ticker) ?? 0, quotesByTicker.get(item.ticker)));
+  return unrealized.map((item) => toPositionApiItem(item, openLotsCountMap.get(`${item.broker}\u0000${item.ticker}`) ?? 0, quotesByTicker.get(item.ticker)));
 }
 
 export async function getRealizedAnalytics(userId: number): Promise<RealizedApiItem[]> {

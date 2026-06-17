@@ -22,6 +22,7 @@ import {
 import { parseCsv } from '../lib/csv';
 
 type TradeFormState = {
+  broker: string;
   ticker: string;
   tradeDate: string;
   type: TradeType;
@@ -54,6 +55,7 @@ const JSON_IMPORT_EXAMPLE = `{
   "rows": [
     {
       "importRef": "AAPL-LOT-1",
+      "broker": "Interactive Brokers",
       "ticker": "AAPL",
       "tradeDate": "2026-03-18",
       "type": "BUY",
@@ -64,6 +66,7 @@ const JSON_IMPORT_EXAMPLE = `{
       "currency": "USD"
     },
     {
+      "broker": "Interactive Brokers",
       "ticker": "AAPL",
       "tradeDate": "2026-03-20",
       "type": "SELL",
@@ -82,6 +85,7 @@ const JSON_IMPORT_EXAMPLE = `{
 
 function createDefaultFormState(): TradeFormState {
   return {
+    broker: 'Unassigned',
     ticker: '',
     tradeDate: dayjs().format('YYYY-MM-DD'),
     type: 'BUY',
@@ -93,6 +97,11 @@ function createDefaultFormState(): TradeFormState {
     lotSelectionMethod: 'FIFO',
     allocations: {}
   };
+}
+
+function normalizeBroker(value: string | null | undefined) {
+  const broker = value?.trim();
+  return broker && broker.length > 0 ? broker : 'Unassigned';
 }
 
 function formatCurrency(value: number, currency = 'USD') {
@@ -211,6 +220,7 @@ function buildCsvPreviewRow(source: Record<string, string>, rowNumber: number): 
       source,
       parsed: {
         importRef: getCsvField(source, 'importRef').trim() || undefined,
+        broker: normalizeBroker(getCsvField(source, 'broker')),
         ticker,
         tradeDate,
         type,
@@ -245,6 +255,7 @@ function buildJsonPreviewRow(row: unknown, rowNumber: number): CsvPreviewRow {
 
   try {
     const record = row as Record<string, unknown>;
+    const broker = normalizeBroker(typeof record.broker === 'string' ? record.broker : undefined);
     const type = typeof record.type === 'string' ? record.type.trim().toUpperCase() : '';
     if (type !== 'BUY' && type !== 'SELL') {
       throw new Error(`Row ${rowNumber}: type must be BUY or SELL`);
@@ -314,6 +325,7 @@ function buildJsonPreviewRow(row: unknown, rowNumber: number): CsvPreviewRow {
       status: 'ready',
       source: {
         importRef: typeof record.importRef === 'string' ? record.importRef : '',
+        broker,
         ticker,
         tradeDate,
         type,
@@ -327,6 +339,7 @@ function buildJsonPreviewRow(row: unknown, rowNumber: number): CsvPreviewRow {
       },
       parsed: {
         importRef: typeof record.importRef === 'string' && record.importRef.trim().length > 0 ? record.importRef.trim() : undefined,
+        broker,
         ticker,
         tradeDate,
         type: type as TradeType,
@@ -389,6 +402,7 @@ export function TradesPage() {
   const [tableError, setTableError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [formMessage, setFormMessage] = useState<string | null>(null);
+  const [hasSubmittedForm, setHasSubmittedForm] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [editingTradeId, setEditingTradeId] = useState<number | null>(null);
   const [availableLots, setAvailableLots] = useState<AvailableLot[]>([]);
@@ -530,6 +544,7 @@ export function TradesPage() {
 
       rows.set(buyTradeId, {
         buyTradeId,
+        broker: normalizeBroker(editingTrade?.broker),
         ticker: form.ticker.trim().toUpperCase(),
         tradeDate: currentAllocation.buyTradeDate,
         buyTradeDate: currentAllocation.buyTradeDate,
@@ -633,14 +648,33 @@ export function TradesPage() {
   const summaryCards = useMemo(() => {
     const buyCount = trades.filter((trade) => trade.type === 'BUY').length;
     const sellCount = trades.filter((trade) => trade.type === 'SELL').length;
-    const specificCount = trades.filter((trade) => trade.type === 'SELL' && trade.lotSelectionMethod === 'SPECIFIC').length;
+    const brokerCount = new Set(trades.map((trade) => normalizeBroker(trade.broker))).size;
 
     return [
       { label: 'Total Trades', value: String(trades.length), tone: 'text-white' },
       { label: 'BUY Orders', value: String(buyCount), tone: 'text-sky-300' },
       { label: 'SELL Orders', value: String(sellCount), tone: 'text-amber-300' },
-      { label: 'Specific Sells', value: String(specificCount), tone: 'text-emerald-300' }
+      { label: 'Brokers', value: String(brokerCount), tone: 'text-emerald-300' }
     ];
+  }, [trades]);
+
+  const brokerStatementGroups = useMemo(() => {
+    const groups = new Map<string, TradeRecord[]>();
+    for (const trade of trades) {
+      const broker = normalizeBroker(trade.broker);
+      groups.set(broker, [...(groups.get(broker) ?? []), trade]);
+    }
+
+    return [...groups.entries()]
+      .map(([broker, brokerTrades]) => ({
+        broker,
+        trades: brokerTrades,
+        totalQuantity: brokerTrades.reduce((sum, trade) => sum + trade.quantity, 0),
+        totalFees: brokerTrades.reduce((sum, trade) => sum + trade.fee, 0),
+        buyCount: brokerTrades.filter((trade) => trade.type === 'BUY').length,
+        sellCount: brokerTrades.filter((trade) => trade.type === 'SELL').length
+      }))
+      .sort((left, right) => left.broker.localeCompare(right.broker));
   }, [trades]);
 
   const csvReadyRows = useMemo(() => csvPreviewRows.filter((row) => row.status === 'ready' && row.parsed), [csvPreviewRows]);
@@ -654,6 +688,7 @@ export function TradesPage() {
     setForm(createDefaultFormState());
     setEditingTradeId(null);
     setFormError(null);
+    setHasSubmittedForm(false);
     if (!preserveMessage) {
       setFormMessage(null);
     }
@@ -708,6 +743,7 @@ export function TradesPage() {
 
     setEditingTradeId(trade.id);
     setForm({
+      broker: normalizeBroker(trade.broker),
       ticker: trade.ticker,
       tradeDate: trade.tradeDate,
       type: trade.type,
@@ -721,6 +757,7 @@ export function TradesPage() {
     });
     setFormError(null);
     setFormMessage(null);
+    setHasSubmittedForm(false);
     setPriceLookupError(null);
     setLatestPriceInfo(null);
   }
@@ -745,6 +782,7 @@ export function TradesPage() {
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    setHasSubmittedForm(true);
 
     if (validationErrors.length > 0) {
       setFormError(validationErrors[0]);
@@ -752,6 +790,7 @@ export function TradesPage() {
     }
 
     const payload: TradePayload = {
+      broker: normalizeBroker(form.broker),
       ticker: form.ticker.trim().toUpperCase(),
       tradeDate: form.tradeDate,
       type: form.type,
@@ -929,6 +968,75 @@ export function TradesPage() {
     }
   }
 
+  function renderTradeTable(title: string, tableTrades: TradeRecord[], options?: { emptyMessage?: string; showLoading?: boolean; summary?: string }) {
+    const showLoading = options?.showLoading ?? false;
+    const emptyMessage = options?.emptyMessage ?? 'No trades yet. Use the form on the right or import a CSV.';
+
+    return (
+      <section className="rounded-3xl border border-white/10 bg-white/5">
+        <div className="flex flex-col gap-2 border-b border-white/10 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h3 className="text-base font-semibold text-white">{title}</h3>
+            {options?.summary ? <p className="mt-1 text-sm text-slate-400">{options.summary}</p> : null}
+          </div>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="min-w-full text-sm">
+            <thead className="border-b border-white/10 bg-slate-950/40 text-left text-xs uppercase tracking-[0.22em] text-slate-400">
+              <tr>
+                <th className="px-4 py-3">Broker</th>
+                <th className="px-4 py-3">Date</th>
+                <th className="px-4 py-3">Ticker</th>
+                <th className="px-4 py-3">Type</th>
+                <th className="px-4 py-3">Method</th>
+                <th className="px-4 py-3">Quantity</th>
+                <th className="px-4 py-3">Price</th>
+                <th className="px-4 py-3">Fee</th>
+                <th className="px-4 py-3">Notes</th>
+                <th className="px-4 py-3">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {showLoading ? (
+                <tr>
+                  <td colSpan={10} className="px-4 py-10 text-center text-slate-400">Loading trades...</td>
+                </tr>
+              ) : tableTrades.length === 0 ? (
+                <tr>
+                  <td colSpan={10} className="px-4 py-10 text-center text-slate-400">{emptyMessage}</td>
+                </tr>
+              ) : (
+                tableTrades.map((trade) => (
+                  <tr key={`${title}-${trade.id}`} className="border-b border-white/10 text-slate-200 last:border-b-0">
+                    <td className="px-4 py-4">
+                      <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-xs font-medium text-slate-200">{normalizeBroker(trade.broker)}</span>
+                    </td>
+                    <td className="px-4 py-4">{dayjs(trade.tradeDate).format('YYYY-MM-DD')}</td>
+                    <td className="px-4 py-4 font-medium text-white">{trade.ticker}</td>
+                    <td className="px-4 py-4">
+                      <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${trade.type === 'BUY' ? 'bg-sky-400/15 text-sky-200' : 'bg-amber-400/15 text-amber-200'}`}>{trade.type}</span>
+                    </td>
+                    <td className="px-4 py-4"><span className="rounded-full bg-white/5 px-2.5 py-1 text-xs font-medium text-slate-300">{formatMethodLabel(trade)}</span></td>
+                    <td className="px-4 py-4">{formatQuantity(trade.quantity)}</td>
+                    <td className="px-4 py-4">{formatCurrency(trade.price, trade.currency)}</td>
+                    <td className="px-4 py-4">{formatCurrency(trade.fee, trade.currency)}</td>
+                    <td className="max-w-[220px] px-4 py-4 text-slate-400">{trade.notes ?? 'No notes'}</td>
+                    <td className="px-4 py-4">
+                      <div className="flex flex-wrap gap-2">
+                        <button type="button" onClick={() => startEdit(trade)} className="rounded-full border border-white/10 bg-slate-950/70 px-3 py-1.5 text-xs font-medium text-slate-200 transition hover:border-emerald-300/40 hover:text-white">Edit</button>
+                        <button type="button" onClick={() => void handleDelete(trade.id)} className="rounded-full border border-rose-300/20 bg-rose-500/10 px-3 py-1.5 text-xs font-medium text-rose-200 transition hover:bg-rose-500/20">Delete</button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    );
+  }
+
   return (
     <section className="space-y-6">
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -941,11 +1049,11 @@ export function TradesPage() {
       </div>
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1.35fr)_minmax(360px,0.9fr)]">
-        <section className="rounded-3xl border border-white/10 bg-white/5">
-          <div className="flex items-center justify-between border-b border-white/10 px-5 py-4">
+        <section className="space-y-4">
+          <div className="flex items-center justify-between rounded-3xl border border-white/10 bg-white/5 px-5 py-4">
             <div>
-              <h2 className="text-lg font-semibold text-white">Trade Ledger</h2>
-              <p className="mt-1 text-sm text-slate-400">SELL rows show the active lot selection method, and edits reopen the same allocation state.</p>
+              <h2 className="text-lg font-semibold text-white">Broker Statements</h2>
+              <p className="mt-1 text-sm text-slate-400">All Brokers is the combined statement. Each broker below has its own separated ledger table.</p>
             </div>
             <button
               type="button"
@@ -963,55 +1071,36 @@ export function TradesPage() {
             <div className="mx-5 mt-4 rounded-2xl border border-rose-400/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">{tableError}</div>
           ) : null}
 
-          <div className="overflow-x-auto">
-            <table className="min-w-full text-sm">
-              <thead className="border-b border-white/10 bg-slate-950/40 text-left text-xs uppercase tracking-[0.22em] text-slate-400">
-                <tr>
-                  <th className="px-4 py-3">Date</th>
-                  <th className="px-4 py-3">Ticker</th>
-                  <th className="px-4 py-3">Type</th>
-                  <th className="px-4 py-3">Method</th>
-                  <th className="px-4 py-3">Quantity</th>
-                  <th className="px-4 py-3">Price</th>
-                  <th className="px-4 py-3">Fee</th>
-                  <th className="px-4 py-3">Notes</th>
-                  <th className="px-4 py-3">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {loading ? (
-                  <tr>
-                    <td colSpan={9} className="px-4 py-10 text-center text-slate-400">Loading trades...</td>
-                  </tr>
-                ) : trades.length === 0 ? (
-                  <tr>
-                    <td colSpan={9} className="px-4 py-10 text-center text-slate-400">No trades yet. Use the form on the right or import a CSV.</td>
-                  </tr>
-                ) : (
-                  trades.map((trade) => (
-                    <tr key={trade.id} className="border-b border-white/10 text-slate-200 last:border-b-0">
-                      <td className="px-4 py-4">{dayjs(trade.tradeDate).format('YYYY-MM-DD')}</td>
-                      <td className="px-4 py-4 font-medium text-white">{trade.ticker}</td>
-                      <td className="px-4 py-4">
-                        <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${trade.type === 'BUY' ? 'bg-sky-400/15 text-sky-200' : 'bg-amber-400/15 text-amber-200'}`}>{trade.type}</span>
-                      </td>
-                      <td className="px-4 py-4"><span className="rounded-full bg-white/5 px-2.5 py-1 text-xs font-medium text-slate-300">{formatMethodLabel(trade)}</span></td>
-                      <td className="px-4 py-4">{formatQuantity(trade.quantity)}</td>
-                      <td className="px-4 py-4">{formatCurrency(trade.price, trade.currency)}</td>
-                      <td className="px-4 py-4">{formatCurrency(trade.fee, trade.currency)}</td>
-                      <td className="max-w-[220px] px-4 py-4 text-slate-400">{trade.notes ?? 'No notes'}</td>
-                      <td className="px-4 py-4">
-                        <div className="flex flex-wrap gap-2">
-                          <button type="button" onClick={() => startEdit(trade)} className="rounded-full border border-white/10 bg-slate-950/70 px-3 py-1.5 text-xs font-medium text-slate-200 transition hover:border-emerald-300/40 hover:text-white">Edit</button>
-                          <button type="button" onClick={() => void handleDelete(trade.id)} className="rounded-full border border-rose-300/20 bg-rose-500/10 px-3 py-1.5 text-xs font-medium text-rose-200 transition hover:bg-rose-500/20">Delete</button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
+          {renderTradeTable('All Brokers Statement', trades, {
+            showLoading: loading,
+            summary: `${trades.length} total trades across ${brokerStatementGroups.length} broker${brokerStatementGroups.length === 1 ? '' : 's'}.`
+          })}
+
+          {!loading && brokerStatementGroups.map((group) => (
+            <div key={group.broker} className="space-y-3">
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                <article className="rounded-2xl border border-white/10 bg-slate-950/35 px-4 py-3">
+                  <p className="text-xs uppercase tracking-[0.22em] text-slate-500">Broker</p>
+                  <p className="mt-2 truncate text-lg font-semibold text-white">{group.broker}</p>
+                </article>
+                <article className="rounded-2xl border border-white/10 bg-slate-950/35 px-4 py-3">
+                  <p className="text-xs uppercase tracking-[0.22em] text-slate-500">Trades</p>
+                  <p className="mt-2 text-lg font-semibold text-emerald-300">{group.trades.length}</p>
+                </article>
+                <article className="rounded-2xl border border-white/10 bg-slate-950/35 px-4 py-3">
+                  <p className="text-xs uppercase tracking-[0.22em] text-slate-500">BUY / SELL</p>
+                  <p className="mt-2 text-lg font-semibold text-slate-100">{group.buyCount} / {group.sellCount}</p>
+                </article>
+                <article className="rounded-2xl border border-white/10 bg-slate-950/35 px-4 py-3">
+                  <p className="text-xs uppercase tracking-[0.22em] text-slate-500">Fees</p>
+                  <p className="mt-2 text-lg font-semibold text-amber-300">{formatCurrency(group.totalFees)}</p>
+                </article>
+              </div>
+              {renderTradeTable(`${group.broker} Statement`, group.trades, {
+                summary: `${group.trades.length} trades, ${formatQuantity(group.totalQuantity)} total shares recorded.`
+              })}
+            </div>
+          ))}
         </section>
 
         <section className="rounded-3xl border border-white/10 bg-white/5 p-5">
@@ -1027,7 +1116,7 @@ export function TradesPage() {
 
           {formMessage ? <div className="mt-4 rounded-2xl border border-emerald-400/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">{formMessage}</div> : null}
           {formError ? <div className="mt-4 rounded-2xl border border-rose-400/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">{formError}</div> : null}
-          {validationErrors.length > 1 ? (
+          {hasSubmittedForm && validationErrors.length > 1 ? (
             <div className="mt-4 rounded-2xl border border-amber-400/20 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
               <ul className="space-y-1">{validationErrors.map((error) => <li key={error}>{error}</li>)}</ul>
             </div>
@@ -1035,6 +1124,10 @@ export function TradesPage() {
 
           <form className="mt-5 space-y-5" onSubmit={handleSubmit}>
             <div className="grid gap-4 md:grid-cols-2">
+              <label className="space-y-2 text-sm text-slate-300 md:col-span-2">
+                <span>Broker</span>
+                <input value={form.broker} onChange={(event) => updateForm('broker', event.target.value)} className="w-full rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3 text-white outline-none transition focus:border-emerald-300/40" placeholder="Interactive Brokers, Schwab, Robinhood..." />
+              </label>
               <label className="space-y-2 text-sm text-slate-300">
                 <span>Ticker</span>
                 <input value={form.ticker} onChange={(event) => { updateForm('ticker', event.target.value.toUpperCase()); setPriceLookupError(null); setLatestPriceInfo(null); }} className="w-full rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3 text-white outline-none transition focus:border-emerald-300/40" placeholder="AAPL" />
@@ -1184,7 +1277,7 @@ export function TradesPage() {
             ) : null}
 
             <div className="flex flex-wrap items-center gap-3">
-              <button type="submit" disabled={isSubmitting || validationErrors.length > 0 || (isSpecific && lotsLoading)} className="rounded-full bg-emerald-400 px-5 py-2.5 text-sm font-semibold text-slate-950 transition hover:bg-emerald-300 disabled:cursor-not-allowed disabled:bg-slate-600 disabled:text-slate-300">{isSubmitting ? 'Saving...' : editingTrade ? 'Update Trade' : 'Create Trade'}</button>
+              <button type="submit" disabled={isSubmitting || (isSpecific && lotsLoading)} className="rounded-full bg-emerald-400 px-5 py-2.5 text-sm font-semibold text-slate-950 transition hover:bg-emerald-300 disabled:cursor-not-allowed disabled:bg-slate-600 disabled:text-slate-300">{isSubmitting ? 'Saving...' : editingTrade ? 'Update Trade' : 'Create Trade'}</button>
               <button type="button" onClick={() => resetForm()} className="rounded-full border border-white/10 px-5 py-2.5 text-sm font-medium text-slate-300 transition hover:text-white">Reset</button>
             </div>
           </form>
@@ -1255,6 +1348,7 @@ export function TradesPage() {
                   <tr>
                     <th className="px-4 py-3">Row</th>
                     <th className="px-4 py-3">Status</th>
+                    <th className="px-4 py-3">Broker</th>
                     <th className="px-4 py-3">Ticker</th>
                     <th className="px-4 py-3">Date</th>
                     <th className="px-4 py-3">Type</th>
@@ -1266,7 +1360,7 @@ export function TradesPage() {
                 <tbody>
                   {csvPreviewRows.length === 0 ? (
                     <tr>
-                      <td colSpan={8} className="px-4 py-8 text-center text-slate-400">
+                      <td colSpan={9} className="px-4 py-8 text-center text-slate-400">
                         Upload a CSV to preview parsed rows before import.
                       </td>
                     </tr>
@@ -1279,6 +1373,7 @@ export function TradesPage() {
                             {row.status === 'ready' ? 'Ready' : 'Error'}
                           </span>
                         </td>
+                        <td className="px-4 py-3">{normalizeBroker(row.parsed?.broker ?? getCsvField(row.source, 'broker'))}</td>
                         <td className="px-4 py-3">{(row.parsed?.ticker ?? getCsvField(row.source, 'ticker')) || 'N/A'}</td>
                         <td className="px-4 py-3">{(row.parsed?.tradeDate ?? getCsvField(row.source, 'tradeDate')) || 'N/A'}</td>
                         <td className="px-4 py-3">{(row.parsed?.type ?? getCsvField(row.source, 'type')) || 'N/A'}</td>
