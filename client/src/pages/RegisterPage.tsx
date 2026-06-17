@@ -30,28 +30,28 @@ export function RegisterPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-slate-950 px-4 py-10 text-slate-100">
-      <div className="w-full max-w-md rounded-3xl border border-white/10 bg-slate-900/80 p-8 shadow-2xl shadow-slate-950/40">
-        <p className="text-sm uppercase tracking-[0.28em] text-emerald-300/80">Member Access</p>
-        <h1 className="mt-3 text-3xl font-semibold text-white">Register</h1>
-        <p className="mt-3 text-sm text-slate-400">Create a private workspace so your trades and analytics stay isolated to your account.</p>
+    <div className="app-shell flex min-h-screen items-center justify-center px-4 py-10 text-slate-100">
+      <div className="surface w-full max-w-md rounded-2xl p-7 backdrop-blur-md">
+        <p className="text-xs font-semibold uppercase text-emerald-300/90">Member Access</p>
+        <h1 className="mt-2 text-3xl font-semibold text-white">Register</h1>
+        <p className="mt-2 text-sm leading-6 text-slate-400">Create a private workspace so your trades and analytics stay isolated to your account.</p>
 
-        {error ? <div className="mt-4 rounded-2xl border border-rose-400/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">{error}</div> : null}
+        {error ? <div className="mt-4 rounded-xl border border-rose-400/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">{error}</div> : null}
 
         <form className="mt-6 space-y-4" onSubmit={handleSubmit}>
           <label className="block space-y-2 text-sm text-slate-300">
             <span>Name</span>
-            <input value={name} onChange={(event) => setName(event.target.value)} type="text" className="w-full rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-white outline-none transition focus:border-emerald-300/40" />
+            <input value={name} onChange={(event) => setName(event.target.value)} type="text" autoComplete="name" className="field-control w-full rounded-xl px-4 py-3 text-white outline-none transition" />
           </label>
           <label className="block space-y-2 text-sm text-slate-300">
             <span>Email</span>
-            <input value={email} onChange={(event) => setEmail(event.target.value)} type="email" className="w-full rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-white outline-none transition focus:border-emerald-300/40" />
+            <input value={email} onChange={(event) => setEmail(event.target.value)} type="email" autoComplete="email" className="field-control w-full rounded-xl px-4 py-3 text-white outline-none transition" />
           </label>
           <label className="block space-y-2 text-sm text-slate-300">
             <span>Password</span>
-            <input value={password} onChange={(event) => setPassword(event.target.value)} type="password" className="w-full rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-white outline-none transition focus:border-emerald-300/40" />
+            <input value={password} onChange={(event) => setPassword(event.target.value)} type="password" autoComplete="new-password" className="field-control w-full rounded-xl px-4 py-3 text-white outline-none transition" />
           </label>
-          <button type="submit" disabled={submitting} className="w-full rounded-full bg-emerald-400 px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-emerald-300 disabled:cursor-not-allowed disabled:bg-slate-600 disabled:text-slate-300">
+          <button type="submit" disabled={submitting} className="w-full rounded-xl bg-emerald-300 px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-emerald-200 focus:outline-none focus:ring-2 focus:ring-emerald-300/40 disabled:cursor-not-allowed disabled:bg-slate-600 disabled:text-slate-300">
             {submitting ? 'Creating Account...' : 'Register'}
           </button>
         </form>
