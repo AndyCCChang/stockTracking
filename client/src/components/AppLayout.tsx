@@ -2,12 +2,12 @@ import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 
 const navigation = [
-  { to: '/', label: 'Dashboard', marker: 'D', end: true },
-  { to: '/trades', label: 'Trades', marker: 'T' },
-  { to: '/positions', label: 'Positions', marker: 'P' },
-  { to: '/realized-pnl', label: 'Realized PnL', marker: 'R' },
-  { to: '/yearly-performance', label: 'Yearly Performance', marker: 'Y' },
-  { to: '/performance', label: 'Performance', marker: 'M' }
+  { to: '/', label: 'Dashboard', end: true },
+  { to: '/trades', label: 'Trades' },
+  { to: '/positions', label: 'Positions' },
+  { to: '/realized-pnl', label: 'Realized PnL' },
+  { to: '/yearly-performance', label: 'Yearly Performance' },
+  { to: '/performance', label: 'Performance' }
 ];
 
 export function AppLayout() {
@@ -53,14 +53,13 @@ export function AppLayout() {
                   end={item.end}
                   className={({ isActive }) =>
                     [
-                      'flex min-w-max items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition focus:outline-none focus:ring-2 focus:ring-emerald-300/25 lg:min-w-0',
+                      'flex min-w-max items-center rounded-xl px-3 py-2.5 text-sm font-medium transition focus:outline-none focus:ring-2 focus:ring-emerald-300/25 lg:min-w-0',
                       isActive
                         ? 'bg-emerald-300 text-slate-950 shadow-lg shadow-emerald-500/20'
                         : 'text-slate-300 hover:bg-white/[0.07] hover:text-white'
                     ].join(' ')
                   }
                 >
-                  <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg border border-current/15 text-xs font-semibold">{item.marker}</span>
                   <span className="truncate">{item.label}</span>
                 </NavLink>
               ))}
