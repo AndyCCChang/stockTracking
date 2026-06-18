@@ -51,6 +51,7 @@ type CsvPreviewRow = {
 
 const QUANTITY_EPSILON = 0.000001;
 const REQUIRED_CSV_COLUMNS = ['ticker', 'tradeDate', 'type', 'quantity', 'price'];
+const CUSTOM_BROKER_STORAGE_KEY = 'stock-tracking-custom-brokers';
 const BROKER_OPTIONS = [
   'Firstrade',
   'E*TRADE',
@@ -114,6 +115,34 @@ function createDefaultFormState(): TradeFormState {
 function normalizeBroker(value: string | null | undefined) {
   const broker = value?.trim();
   return broker && broker.length > 0 ? broker : 'Unassigned';
+}
+
+function normalizeBrokerOption(value: string | null | undefined) {
+  return value?.trim() ?? '';
+}
+
+function readCustomBrokerOptions() {
+  try {
+    const rawValue = localStorage.getItem(CUSTOM_BROKER_STORAGE_KEY);
+    if (!rawValue) {
+      return [];
+    }
+
+    const parsed = JSON.parse(rawValue);
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+
+    return parsed
+      .map((value) => normalizeBrokerOption(typeof value === 'string' ? value : null))
+      .filter((value) => value.length > 0);
+  } catch {
+    return [];
+  }
+}
+
+function persistCustomBrokerOptions(options: string[]) {
+  localStorage.setItem(CUSTOM_BROKER_STORAGE_KEY, JSON.stringify(options));
 }
 
 function formatCurrency(value: number, currency = 'USD') {
@@ -424,6 +453,7 @@ export function TradesPage() {
   const [lotsLoading, setLotsLoading] = useState(false);
   const [lotsError, setLotsError] = useState<string | null>(null);
   const [form, setForm] = useState<TradeFormState>(createDefaultFormState);
+  const [customBrokerOptions, setCustomBrokerOptions] = useState<string[]>(readCustomBrokerOptions);
   const [csvFileName, setCsvFileName] = useState<string | null>(null);
   const [csvPreviewRows, setCsvPreviewRows] = useState<CsvPreviewRow[]>([]);
   const [csvError, setCsvError] = useState<string | null>(null);
@@ -450,6 +480,19 @@ export function TradesPage() {
   const price = toPositiveNumber(form.price);
   const fee = toPositiveNumber(form.fee);
   const selectedTradeIdSet = useMemo(() => new Set(selectedTradeIds), [selectedTradeIds]);
+  const brokerOptions = useMemo(() => {
+    const options = new Map<string, string>();
+    for (const broker of [...BROKER_OPTIONS, ...customBrokerOptions]) {
+      const normalized = normalizeBrokerOption(broker);
+      if (normalized.length > 0) {
+        options.set(normalized.toLowerCase(), normalized);
+      }
+    }
+
+    return [...options.values()].sort((left, right) => left.localeCompare(right));
+  }, [customBrokerOptions]);
+  const currentBrokerOption = normalizeBrokerOption(form.broker);
+  const canAddCurrentBroker = currentBrokerOption.length > 0 && !brokerOptions.some((broker) => broker.toLowerCase() === currentBrokerOption.toLowerCase());
 
   async function loadTrades() {
     try {
@@ -753,6 +796,32 @@ export function TradesPage() {
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
+  }
+
+  function handleAddBrokerOption() {
+    if (!canAddCurrentBroker) {
+      return;
+    }
+
+    const nextOptions = [...customBrokerOptions, currentBrokerOption].sort((left, right) => left.localeCompare(right));
+    setCustomBrokerOptions(nextOptions);
+    persistCustomBrokerOptions(nextOptions);
+    setFormMessage(`Added ${currentBrokerOption} to frequent brokers.`);
+  }
+
+  function handleRemoveBrokerOption(broker: string) {
+    const confirmed = window.confirm(`Remove ${broker} from frequent brokers?`);
+    if (!confirmed) {
+      return;
+    }
+
+    const nextOptions = customBrokerOptions.filter((option) => option.toLowerCase() !== broker.toLowerCase());
+    setCustomBrokerOptions(nextOptions);
+    persistCustomBrokerOptions(nextOptions);
+    if (form.broker.toLowerCase() === broker.toLowerCase()) {
+      updateForm('broker', '');
+    }
+    setFormMessage(`Removed ${broker} from frequent brokers.`);
   }
 
   function startEdit(trade: TradeRecord) {
@@ -1255,7 +1324,17 @@ export function TradesPage() {
           <form className="mt-5 space-y-5" onSubmit={handleSubmit}>
             <div className="grid gap-4 md:grid-cols-2">
               <label className="space-y-2 text-sm text-slate-300 md:col-span-2">
-                <span>Broker</span>
+                <div className="flex items-center justify-between gap-3">
+                  <span>Broker</span>
+                  <button
+                    type="button"
+                    onClick={handleAddBrokerOption}
+                    disabled={!canAddCurrentBroker}
+                    className="rounded-full border border-emerald-300/30 bg-emerald-400/10 px-3 py-1.5 text-xs font-medium text-emerald-200 transition hover:bg-emerald-400/20 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/5 disabled:text-slate-500"
+                  >
+                    Add to Frequent
+                  </button>
+                </div>
                 <input
                   list="broker-options"
                   value={form.broker}
@@ -1264,10 +1343,45 @@ export function TradesPage() {
                   placeholder="Select or type a broker"
                 />
                 <datalist id="broker-options">
-                  {BROKER_OPTIONS.map((broker) => (
+                  {brokerOptions.map((broker) => (
                     <option key={broker} value={broker} />
                   ))}
                 </datalist>
+                <div className="flex flex-wrap gap-2">
+                  {brokerOptions.map((broker) => {
+                    const isCustom = customBrokerOptions.some((option) => option.toLowerCase() === broker.toLowerCase());
+                    return (
+                      <span
+                        key={broker}
+                        className={[
+                          'inline-flex items-center overflow-hidden rounded-full border text-xs font-medium transition',
+                          form.broker === broker
+                            ? 'border-emerald-300/40 bg-emerald-400/15 text-emerald-100'
+                            : 'border-white/10 bg-white/5 text-slate-300'
+                        ].join(' ')}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => updateForm('broker', broker)}
+                          className="px-3 py-1.5 transition hover:bg-white/10 hover:text-white"
+                        >
+                          {broker}
+                        </button>
+                        {isCustom ? (
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveBrokerOption(broker)}
+                            className="mr-1 grid h-5 w-5 place-items-center rounded-full text-sm leading-none text-slate-400 transition hover:bg-rose-500/20 hover:text-rose-100"
+                            aria-label={`Remove ${broker} from frequent brokers`}
+                            title={`Remove ${broker}`}
+                          >
+                            ×
+                          </button>
+                        ) : null}
+                      </span>
+                    );
+                  })}
+                </div>
               </label>
               <label className="space-y-2 text-sm text-slate-300">
                 <span>Ticker</span>
