@@ -51,6 +51,18 @@ type CsvPreviewRow = {
 
 const QUANTITY_EPSILON = 0.000001;
 const REQUIRED_CSV_COLUMNS = ['ticker', 'tradeDate', 'type', 'quantity', 'price'];
+const BROKER_OPTIONS = [
+  'Firstrade',
+  'E*TRADE',
+  'Merrill Lynch',
+  'Charles Schwab',
+  'Fidelity',
+  'Interactive Brokers',
+  'Robinhood',
+  'TD Ameritrade',
+  'Vanguard',
+  'Webull'
+];
 const JSON_IMPORT_EXAMPLE = `{
   "rows": [
     {
@@ -85,7 +97,7 @@ const JSON_IMPORT_EXAMPLE = `{
 
 function createDefaultFormState(): TradeFormState {
   return {
-    broker: 'Unassigned',
+    broker: '',
     ticker: '',
     tradeDate: dayjs().format('YYYY-MM-DD'),
     type: 'BUY',
@@ -400,10 +412,13 @@ export function TradesPage() {
   const [trades, setTrades] = useState<TradeRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [tableError, setTableError] = useState<string | null>(null);
+  const [tableMessage, setTableMessage] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [formMessage, setFormMessage] = useState<string | null>(null);
   const [hasSubmittedForm, setHasSubmittedForm] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [selectedTradeIds, setSelectedTradeIds] = useState<number[]>([]);
+  const [isBulkDeleting, setIsBulkDeleting] = useState(false);
   const [editingTradeId, setEditingTradeId] = useState<number | null>(null);
   const [availableLots, setAvailableLots] = useState<AvailableLot[]>([]);
   const [lotsLoading, setLotsLoading] = useState(false);
@@ -419,6 +434,7 @@ export function TradesPage() {
   const [jsonImportMessage, setJsonImportMessage] = useState<string | null>(null);
   const [isImportingJson, setIsImportingJson] = useState(false);
   const [isJsonEditorOpen, setIsJsonEditorOpen] = useState(false);
+  const [isTradeFormOpen, setIsTradeFormOpen] = useState(false);
   const [priceLookupLoading, setPriceLookupLoading] = useState(false);
   const [priceLookupError, setPriceLookupError] = useState<string | null>(null);
   const [latestPriceInfo, setLatestPriceInfo] = useState<string | null>(null);
@@ -433,6 +449,7 @@ export function TradesPage() {
   const quantity = toPositiveNumber(form.quantity);
   const price = toPositiveNumber(form.price);
   const fee = toPositiveNumber(form.fee);
+  const selectedTradeIdSet = useMemo(() => new Set(selectedTradeIds), [selectedTradeIds]);
 
   async function loadTrades() {
     try {
@@ -452,7 +469,7 @@ export function TradesPage() {
   }, []);
 
   useEffect(() => {
-    if (!isJsonEditorOpen) {
+    if (!isJsonEditorOpen && !isTradeFormOpen) {
       return;
     }
 
@@ -462,7 +479,7 @@ export function TradesPage() {
     return () => {
       document.body.style.overflow = previousOverflow;
     };
-  }, [isJsonEditorOpen]);
+  }, [isJsonEditorOpen, isTradeFormOpen]);
 
   useEffect(() => {
     if (!isSpecific) {
@@ -758,6 +775,7 @@ export function TradesPage() {
     setFormError(null);
     setFormMessage(null);
     setHasSubmittedForm(false);
+    setIsTradeFormOpen(true);
     setPriceLookupError(null);
     setLatestPriceInfo(null);
   }
@@ -770,11 +788,12 @@ export function TradesPage() {
 
     try {
       await deleteTrade(id);
+      setSelectedTradeIds((current) => current.filter((tradeId) => tradeId !== id));
       if (editingTradeId === id) {
         resetForm();
       }
       await loadTrades();
-      setFormMessage('Trade deleted.');
+      setTableMessage('Trade deleted.');
     } catch (error) {
       setTableError(error instanceof Error ? error.message : 'Failed to delete trade');
     }
@@ -823,6 +842,7 @@ export function TradesPage() {
       }
       await loadTrades();
       resetForm(true);
+      setIsTradeFormOpen(false);
     } catch (error) {
       setFormError(error instanceof Error ? error.message : 'Failed to save trade');
     } finally {
@@ -968,9 +988,76 @@ export function TradesPage() {
     }
   }
 
+  function toggleTradeSelection(id: number) {
+    setSelectedTradeIds((current) => (
+      current.includes(id)
+        ? current.filter((tradeId) => tradeId !== id)
+        : [...current, id]
+    ));
+  }
+
+  function toggleTableSelection(tableTrades: TradeRecord[]) {
+    const tableIds = tableTrades.map((trade) => trade.id);
+    const allSelected = tableIds.length > 0 && tableIds.every((id) => selectedTradeIdSet.has(id));
+
+    setSelectedTradeIds((current) => {
+      if (allSelected) {
+        return current.filter((id) => !tableIds.includes(id));
+      }
+
+      return [...new Set([...current, ...tableIds])];
+    });
+  }
+
+  async function handleBulkDelete(ids: number[]) {
+    const uniqueIds = [...new Set(ids)];
+    if (uniqueIds.length === 0) {
+      return;
+    }
+
+    const confirmed = window.confirm(`Delete ${uniqueIds.length} selected trade${uniqueIds.length === 1 ? '' : 's'}? This will also rebuild SELL allocations.`);
+    if (!confirmed) {
+      return;
+    }
+
+    const selectedTrades = uniqueIds
+      .map((id) => trades.find((trade) => trade.id === id))
+      .filter((trade): trade is TradeRecord => Boolean(trade))
+      .sort((left, right) => {
+        if (left.type !== right.type) {
+          return left.type === 'SELL' ? -1 : 1;
+        }
+        return right.tradeDate.localeCompare(left.tradeDate) || right.id - left.id;
+      });
+
+    try {
+      setIsBulkDeleting(true);
+      setTableError(null);
+      setTableMessage(null);
+      for (const trade of selectedTrades) {
+        await deleteTrade(trade.id);
+      }
+
+      if (editingTradeId != null && uniqueIds.includes(editingTradeId)) {
+        resetForm();
+      }
+
+      setSelectedTradeIds((current) => current.filter((id) => !uniqueIds.includes(id)));
+      await loadTrades();
+      setTableMessage(`Deleted ${selectedTrades.length} selected trade${selectedTrades.length === 1 ? '' : 's'}.`);
+    } catch (error) {
+      setTableError(error instanceof Error ? error.message : 'Failed to delete selected trades');
+    } finally {
+      setIsBulkDeleting(false);
+    }
+  }
+
   function renderTradeTable(title: string, tableTrades: TradeRecord[], options?: { emptyMessage?: string; showLoading?: boolean; summary?: string }) {
     const showLoading = options?.showLoading ?? false;
     const emptyMessage = options?.emptyMessage ?? 'No trades yet. Use the form on the right or import a CSV.';
+    const tableIds = tableTrades.map((trade) => trade.id);
+    const tableSelectedIds = tableIds.filter((id) => selectedTradeIdSet.has(id));
+    const allTableRowsSelected = tableIds.length > 0 && tableSelectedIds.length === tableIds.length;
 
     return (
       <section className="rounded-3xl border border-white/10 bg-white/5">
@@ -979,11 +1066,34 @@ export function TradesPage() {
             <h3 className="text-base font-semibold text-white">{title}</h3>
             {options?.summary ? <p className="mt-1 text-sm text-slate-400">{options.summary}</p> : null}
           </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-slate-300">
+              {tableSelectedIds.length} selected
+            </span>
+            <button
+              type="button"
+              disabled={tableSelectedIds.length === 0 || isBulkDeleting}
+              onClick={() => void handleBulkDelete(tableSelectedIds)}
+              className="rounded-full border border-rose-300/20 bg-rose-500/10 px-3 py-1.5 text-xs font-medium text-rose-200 transition hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/5 disabled:text-slate-500"
+            >
+              {isBulkDeleting ? 'Deleting...' : 'Delete Selected'}
+            </button>
+          </div>
         </div>
         <div className="overflow-x-auto">
           <table className="min-w-full text-sm">
             <thead className="border-b border-white/10 bg-slate-950/40 text-left text-xs uppercase tracking-[0.22em] text-slate-400">
               <tr>
+                <th className="px-4 py-3">
+                  <input
+                    type="checkbox"
+                    checked={allTableRowsSelected}
+                    disabled={tableIds.length === 0 || showLoading || isBulkDeleting}
+                    onChange={() => toggleTableSelection(tableTrades)}
+                    aria-label={`Select all rows in ${title}`}
+                    className="h-4 w-4 rounded border-white/20 bg-slate-950 text-emerald-400"
+                  />
+                </th>
                 <th className="px-4 py-3">Broker</th>
                 <th className="px-4 py-3">Date</th>
                 <th className="px-4 py-3">Ticker</th>
@@ -999,15 +1109,25 @@ export function TradesPage() {
             <tbody>
               {showLoading ? (
                 <tr>
-                  <td colSpan={10} className="px-4 py-10 text-center text-slate-400">Loading trades...</td>
+                  <td colSpan={11} className="px-4 py-10 text-center text-slate-400">Loading trades...</td>
                 </tr>
               ) : tableTrades.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="px-4 py-10 text-center text-slate-400">{emptyMessage}</td>
+                  <td colSpan={11} className="px-4 py-10 text-center text-slate-400">{emptyMessage}</td>
                 </tr>
               ) : (
                 tableTrades.map((trade) => (
                   <tr key={`${title}-${trade.id}`} className="border-b border-white/10 text-slate-200 last:border-b-0">
+                    <td className="px-4 py-4">
+                      <input
+                        type="checkbox"
+                        checked={selectedTradeIdSet.has(trade.id)}
+                        disabled={isBulkDeleting}
+                        onChange={() => toggleTradeSelection(trade.id)}
+                        aria-label={`Select trade ${trade.id}`}
+                        className="h-4 w-4 rounded border-white/20 bg-slate-950 text-emerald-400"
+                      />
+                    </td>
                     <td className="px-4 py-4">
                       <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-xs font-medium text-slate-200">{normalizeBroker(trade.broker)}</span>
                     </td>
@@ -1048,7 +1168,7 @@ export function TradesPage() {
         ))}
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.35fr)_minmax(360px,0.9fr)]">
+      <div className="space-y-6">
         <section className="space-y-4">
           <div className="flex items-center justify-between rounded-3xl border border-white/10 bg-white/5 px-5 py-4">
             <div>
@@ -1060,6 +1180,7 @@ export function TradesPage() {
               onClick={() => {
                 resetForm();
                 setFormMessage('Ready to add a new trade.');
+                setIsTradeFormOpen(true);
               }}
               className="rounded-full border border-emerald-300/30 bg-emerald-400/10 px-4 py-2 text-sm font-medium text-emerald-200 transition hover:bg-emerald-400/20"
             >
@@ -1069,6 +1190,9 @@ export function TradesPage() {
 
           {tableError ? (
             <div className="mx-5 mt-4 rounded-2xl border border-rose-400/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">{tableError}</div>
+          ) : null}
+          {tableMessage ? (
+            <div className="mx-5 mt-4 rounded-2xl border border-emerald-400/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">{tableMessage}</div>
           ) : null}
 
           {renderTradeTable('All Brokers Statement', trades, {
@@ -1103,15 +1227,21 @@ export function TradesPage() {
           ))}
         </section>
 
-        <section className="rounded-3xl border border-white/10 bg-white/5 p-5">
+        {isTradeFormOpen
+          ? createPortal(
+            <div className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-950/85 px-4 py-6 backdrop-blur-sm" onClick={() => setIsTradeFormOpen(false)}>
+              <section className="max-h-[92vh] w-full max-w-3xl overflow-auto rounded-3xl border border-white/10 bg-slate-950 p-5 shadow-2xl shadow-black/50" onClick={(event) => event.stopPropagation()}>
           <div className="flex items-start justify-between gap-4">
             <div>
               <h2 className="text-lg font-semibold text-white">{editingTrade ? 'Edit Trade' : 'New Trade'}</h2>
               <p className="mt-1 text-sm text-slate-400">SELL orders can use FIFO auto allocation or Specific Lot selection with live allocation previews.</p>
             </div>
-            {editingTrade ? (
-              <button type="button" onClick={() => resetForm()} className="rounded-full border border-white/10 px-3 py-1.5 text-xs font-medium text-slate-300 transition hover:text-white">Cancel Edit</button>
-            ) : null}
+            <div className="flex flex-wrap gap-2">
+              {editingTrade ? (
+                <button type="button" onClick={() => resetForm()} className="rounded-full border border-white/10 px-3 py-1.5 text-xs font-medium text-slate-300 transition hover:text-white">Cancel Edit</button>
+              ) : null}
+              <button type="button" onClick={() => setIsTradeFormOpen(false)} className="rounded-full border border-white/10 px-3 py-1.5 text-xs font-medium text-slate-300 transition hover:text-white">Close</button>
+            </div>
           </div>
 
           {formMessage ? <div className="mt-4 rounded-2xl border border-emerald-400/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">{formMessage}</div> : null}
@@ -1126,7 +1256,18 @@ export function TradesPage() {
             <div className="grid gap-4 md:grid-cols-2">
               <label className="space-y-2 text-sm text-slate-300 md:col-span-2">
                 <span>Broker</span>
-                <input value={form.broker} onChange={(event) => updateForm('broker', event.target.value)} className="w-full rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3 text-white outline-none transition focus:border-emerald-300/40" placeholder="Interactive Brokers, Schwab, Robinhood..." />
+                <input
+                  list="broker-options"
+                  value={form.broker}
+                  onChange={(event) => updateForm('broker', event.target.value)}
+                  className="w-full rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3 text-white outline-none transition focus:border-emerald-300/40"
+                  placeholder="Select or type a broker"
+                />
+                <datalist id="broker-options">
+                  {BROKER_OPTIONS.map((broker) => (
+                    <option key={broker} value={broker} />
+                  ))}
+                </datalist>
               </label>
               <label className="space-y-2 text-sm text-slate-300">
                 <span>Ticker</span>
@@ -1281,7 +1422,11 @@ export function TradesPage() {
               <button type="button" onClick={() => resetForm()} className="rounded-full border border-white/10 px-5 py-2.5 text-sm font-medium text-slate-300 transition hover:text-white">Reset</button>
             </div>
           </form>
-        </section>
+              </section>
+            </div>,
+            document.body
+          )
+          : null}
       </div>
 
       <section className="rounded-3xl border border-white/10 bg-white/5 p-5">
