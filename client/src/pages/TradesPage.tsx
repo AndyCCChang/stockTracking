@@ -465,6 +465,7 @@ export function TradesPage() {
   const [isImportingJson, setIsImportingJson] = useState(false);
   const [isJsonEditorOpen, setIsJsonEditorOpen] = useState(false);
   const [isTradeFormOpen, setIsTradeFormOpen] = useState(false);
+  const [expandedStatementIds, setExpandedStatementIds] = useState<Record<string, boolean>>({ 'all-brokers': true });
   const [priceLookupLoading, setPriceLookupLoading] = useState(false);
   const [priceLookupError, setPriceLookupError] = useState<string | null>(null);
   const [latestPriceInfo, setLatestPriceInfo] = useState<string | null>(null);
@@ -736,6 +737,10 @@ export function TradesPage() {
       }))
       .sort((left, right) => left.broker.localeCompare(right.broker));
   }, [trades]);
+  const statementIds = useMemo(
+    () => ['all-brokers', ...brokerStatementGroups.map((group) => `broker:${group.broker}`)],
+    [brokerStatementGroups]
+  );
 
   const csvReadyRows = useMemo(() => csvPreviewRows.filter((row) => row.status === 'ready' && row.parsed), [csvPreviewRows]);
   const csvErrorRows = useMemo(() => csvPreviewRows.filter((row) => row.status === 'error'), [csvPreviewRows]);
@@ -1121,19 +1126,68 @@ export function TradesPage() {
     }
   }
 
-  function renderTradeTable(title: string, tableTrades: TradeRecord[], options?: { emptyMessage?: string; showLoading?: boolean; summary?: string }) {
+  function toggleStatement(statementId: string) {
+    setExpandedStatementIds((current) => ({
+      ...current,
+      [statementId]: !(current[statementId] ?? false)
+    }));
+  }
+
+  function expandAllStatements() {
+    setExpandedStatementIds(Object.fromEntries(statementIds.map((statementId) => [statementId, true])));
+  }
+
+  function collapseBrokerStatements() {
+    setExpandedStatementIds(Object.fromEntries(statementIds.map((statementId) => [statementId, statementId === 'all-brokers'])));
+  }
+
+  function renderTradeTable(
+    title: string,
+    tableTrades: TradeRecord[],
+    options?: {
+      emptyMessage?: string;
+      showLoading?: boolean;
+      summary?: string;
+      statementId?: string;
+      defaultExpanded?: boolean;
+      metrics?: { label: string; value: string; tone?: string }[];
+    }
+  ) {
     const showLoading = options?.showLoading ?? false;
     const emptyMessage = options?.emptyMessage ?? 'No trades yet. Use the form on the right or import a CSV.';
     const tableIds = tableTrades.map((trade) => trade.id);
     const tableSelectedIds = tableIds.filter((id) => selectedTradeIdSet.has(id));
     const allTableRowsSelected = tableIds.length > 0 && tableSelectedIds.length === tableIds.length;
+    const statementId = options?.statementId;
+    const isExpanded = statementId == null ? true : expandedStatementIds[statementId] ?? options?.defaultExpanded ?? false;
 
     return (
       <section className="rounded-3xl border border-white/10 bg-white/5">
-        <div className="flex flex-col gap-2 border-b border-white/10 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h3 className="text-base font-semibold text-white">{title}</h3>
+        <div className={`flex flex-col gap-4 px-5 py-4 sm:flex-row sm:items-center sm:justify-between ${isExpanded ? 'border-b border-white/10' : ''}`}>
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-3">
+              <h3 className="text-base font-semibold text-white">{title}</h3>
+              {statementId ? (
+                <button
+                  type="button"
+                  onClick={() => toggleStatement(statementId)}
+                  aria-expanded={isExpanded}
+                  className="rounded-full border border-white/10 bg-slate-950/50 px-3 py-1 text-xs font-medium text-slate-300 transition hover:border-emerald-300/40 hover:text-white"
+                >
+                  {isExpanded ? 'Collapse' : 'Expand'}
+                </button>
+              ) : null}
+            </div>
             {options?.summary ? <p className="mt-1 text-sm text-slate-400">{options.summary}</p> : null}
+            {options?.metrics?.length ? (
+              <div className="mt-3 flex flex-wrap gap-2">
+                {options.metrics.map((metric) => (
+                  <span key={metric.label} className="rounded-full border border-white/10 bg-slate-950/45 px-3 py-1.5 text-xs font-medium text-slate-300">
+                    {metric.label}: <span className={metric.tone ?? 'text-white'}>{metric.value}</span>
+                  </span>
+                ))}
+              </div>
+            ) : null}
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-slate-300">
@@ -1149,6 +1203,7 @@ export function TradesPage() {
             </button>
           </div>
         </div>
+        {isExpanded ? (
         <div className="overflow-x-auto">
           <table className="min-w-full text-sm">
             <thead className="border-b border-white/10 bg-slate-950/40 text-left text-xs uppercase tracking-[0.22em] text-slate-400">
@@ -1222,6 +1277,7 @@ export function TradesPage() {
             </tbody>
           </table>
         </div>
+        ) : null}
       </section>
     );
   }
@@ -1242,19 +1298,35 @@ export function TradesPage() {
           <div className="flex items-center justify-between rounded-3xl border border-white/10 bg-white/5 px-5 py-4">
             <div>
               <h2 className="text-lg font-semibold text-white">Broker Statements</h2>
-              <p className="mt-1 text-sm text-slate-400">All Brokers is the combined statement. Each broker below has its own separated ledger table.</p>
+              <p className="mt-1 text-sm text-slate-400">All Brokers is the combined statement. Broker statements stay collapsed until you expand the ones you want to inspect.</p>
             </div>
-            <button
-              type="button"
-              onClick={() => {
-                resetForm();
-                setFormMessage('Ready to add a new trade.');
-                setIsTradeFormOpen(true);
-              }}
-              className="rounded-full border border-emerald-300/30 bg-emerald-400/10 px-4 py-2 text-sm font-medium text-emerald-200 transition hover:bg-emerald-400/20"
-            >
-              New Trade
-            </button>
+            <div className="flex flex-wrap justify-end gap-2">
+              <button
+                type="button"
+                onClick={expandAllStatements}
+                className="rounded-full border border-white/10 px-3 py-2 text-xs font-medium text-slate-300 transition hover:text-white"
+              >
+                Expand All
+              </button>
+              <button
+                type="button"
+                onClick={collapseBrokerStatements}
+                className="rounded-full border border-white/10 px-3 py-2 text-xs font-medium text-slate-300 transition hover:text-white"
+              >
+                Collapse Brokers
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  resetForm();
+                  setFormMessage('Ready to add a new trade.');
+                  setIsTradeFormOpen(true);
+                }}
+                className="rounded-full border border-emerald-300/30 bg-emerald-400/10 px-4 py-2 text-sm font-medium text-emerald-200 transition hover:bg-emerald-400/20"
+              >
+                New Trade
+              </button>
+            </div>
           </div>
 
           {tableError ? (
@@ -1265,32 +1337,26 @@ export function TradesPage() {
           ) : null}
 
           {renderTradeTable('All Brokers Statement', trades, {
+            statementId: 'all-brokers',
+            defaultExpanded: true,
             showLoading: loading,
-            summary: `${trades.length} total trades across ${brokerStatementGroups.length} broker${brokerStatementGroups.length === 1 ? '' : 's'}.`
+            summary: `${trades.length} total trades across ${brokerStatementGroups.length} broker${brokerStatementGroups.length === 1 ? '' : 's'}.`,
+            metrics: [
+              { label: 'Trades', value: String(trades.length), tone: 'text-emerald-300' },
+              { label: 'Brokers', value: String(brokerStatementGroups.length), tone: 'text-sky-300' }
+            ]
           })}
 
           {!loading && brokerStatementGroups.map((group) => (
-            <div key={group.broker} className="space-y-3">
-              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                <article className="rounded-2xl border border-white/10 bg-slate-950/35 px-4 py-3">
-                  <p className="text-xs uppercase tracking-[0.22em] text-slate-500">Broker</p>
-                  <p className="mt-2 truncate text-lg font-semibold text-white">{group.broker}</p>
-                </article>
-                <article className="rounded-2xl border border-white/10 bg-slate-950/35 px-4 py-3">
-                  <p className="text-xs uppercase tracking-[0.22em] text-slate-500">Trades</p>
-                  <p className="mt-2 text-lg font-semibold text-emerald-300">{group.trades.length}</p>
-                </article>
-                <article className="rounded-2xl border border-white/10 bg-slate-950/35 px-4 py-3">
-                  <p className="text-xs uppercase tracking-[0.22em] text-slate-500">BUY / SELL</p>
-                  <p className="mt-2 text-lg font-semibold text-slate-100">{group.buyCount} / {group.sellCount}</p>
-                </article>
-                <article className="rounded-2xl border border-white/10 bg-slate-950/35 px-4 py-3">
-                  <p className="text-xs uppercase tracking-[0.22em] text-slate-500">Fees</p>
-                  <p className="mt-2 text-lg font-semibold text-amber-300">{formatCurrency(group.totalFees)}</p>
-                </article>
-              </div>
+            <div key={group.broker}>
               {renderTradeTable(`${group.broker} Statement`, group.trades, {
-                summary: `${group.trades.length} trades, ${formatQuantity(group.totalQuantity)} total shares recorded.`
+                statementId: `broker:${group.broker}`,
+                summary: `${group.trades.length} trades, ${formatQuantity(group.totalQuantity)} total shares recorded.`,
+                metrics: [
+                  { label: 'Trades', value: String(group.trades.length), tone: 'text-emerald-300' },
+                  { label: 'BUY / SELL', value: `${group.buyCount} / ${group.sellCount}`, tone: 'text-slate-100' },
+                  { label: 'Fees', value: formatCurrency(group.totalFees), tone: 'text-amber-300' }
+                ]
               })}
             </div>
           ))}

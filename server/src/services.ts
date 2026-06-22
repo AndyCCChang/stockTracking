@@ -8,6 +8,7 @@ import {
   getTradeOwnerId,
   insertTrade,
   listTrades,
+  replaceAllocationsForSellTrades,
   replaceAllAllocations,
   runInTransaction,
   updateTradeRow
@@ -49,11 +50,30 @@ async function assertAllocationOwnership(userId: number, input: TradeInput, db?:
   }
 }
 
-async function rebuildAllocations(userId: number, overrides: Map<number, TradeLotAllocationInput[] | undefined> = new Map(), db?: Queryable) {
+function normalizeTickerScope(tickers: Iterable<string>) {
+  return new Set([...tickers].map((ticker) => ticker.trim().toUpperCase()).filter((ticker) => ticker.length > 0));
+}
+
+async function rebuildAllocations(
+  userId: number,
+  overrides: Map<number, TradeLotAllocationInput[] | undefined> = new Map(),
+  db?: Queryable,
+  affectedTickers?: Iterable<string>,
+  staleSellTradeIds: number[] = []
+) {
   const trades = await getAllTrades(userId, db);
   const existingAllocations = await getAllTradeAllocations(userId, db);
-  const plannedAllocations = buildAllocationPlan(trades, existingAllocations, overrides);
-  await replaceAllAllocations(userId, plannedAllocations, db);
+  const tickerScope = affectedTickers ? normalizeTickerScope(affectedTickers) : null;
+  const scopedTrades = tickerScope ? trades.filter((trade) => tickerScope.has(trade.ticker)) : trades;
+  const plannedAllocations = buildAllocationPlan(scopedTrades, existingAllocations, overrides);
+
+  if (!tickerScope) {
+    await replaceAllAllocations(userId, plannedAllocations, db);
+    return;
+  }
+
+  const scopedSellTradeIds = scopedTrades.filter((trade) => trade.type === 'SELL').map((trade) => trade.id);
+  await replaceAllocationsForSellTrades(userId, [...scopedSellTradeIds, ...staleSellTradeIds], plannedAllocations, db);
 }
 
 async function createTradeInCurrentTransaction(userId: number, input: TradeInput, db: Queryable) {
@@ -64,7 +84,7 @@ async function createTradeInCurrentTransaction(userId: number, input: TradeInput
     overrides.set(tradeId, input.allocations ?? []);
   }
 
-  await rebuildAllocations(userId, overrides, db);
+  await rebuildAllocations(userId, overrides, db, [input.ticker]);
   const trade = await getTradeById(userId, tradeId, db);
   if (!trade) {
     throw new NotFoundError(`Trade ${tradeId} not found after creation`);
@@ -76,6 +96,7 @@ async function createTradeInCurrentTransaction(userId: number, input: TradeInput
 async function updateTradeInCurrentTransaction(userId: number, id: number, input: TradeInput, db: Queryable) {
   await assertTradeOwnership(userId, id, db);
   await assertAllocationOwnership(userId, input, db);
+  const previousTrade = await getTradeById(userId, id, db);
 
   await updateTradeRow(id, input, db);
   const overrides = new Map<number, TradeLotAllocationInput[] | undefined>();
@@ -83,7 +104,13 @@ async function updateTradeInCurrentTransaction(userId: number, id: number, input
     overrides.set(id, input.allocations ?? []);
   }
 
-  await rebuildAllocations(userId, overrides, db);
+  await rebuildAllocations(
+    userId,
+    overrides,
+    db,
+    [previousTrade?.ticker, input.ticker].filter((ticker): ticker is string => Boolean(ticker)),
+    previousTrade?.type === 'SELL' ? [id] : []
+  );
   const trade = await getTradeById(userId, id, db);
   if (!trade) {
     throw new NotFoundError(`Trade ${id} not found after update`);
@@ -161,8 +188,12 @@ export async function updateTradeWithValidation(userId: number, id: number, inpu
 export async function deleteTradeWithValidation(userId: number, id: number) {
   await runInTransaction(async (db) => {
     await assertTradeOwnership(userId, id, db);
+    const trade = await getTradeById(userId, id, db);
+    if (!trade) {
+      throw new NotFoundError(`Trade ${id} not found`);
+    }
     await deleteTradeRow(id, db);
-    await rebuildAllocations(userId, new Map(), db);
+    await rebuildAllocations(userId, new Map(), db, [trade.ticker], trade.type === 'SELL' ? [id] : []);
   });
 }
 

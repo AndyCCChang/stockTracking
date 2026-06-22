@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts';
 import {
   deleteTrade,
@@ -220,6 +220,7 @@ function CompositionTooltip({
 }
 
 export function PositionsPage() {
+  const pendingSortScrollYRef = useRef<number | null>(null);
   const [items, setItems] = useState<PositionItem[]>([]);
   const [trades, setTrades] = useState<TradeRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -276,6 +277,23 @@ export function PositionsPage() {
 
     return () => window.clearInterval(intervalId);
   }, []);
+
+  useLayoutEffect(() => {
+    const pendingScrollY = pendingSortScrollYRef.current;
+    if (pendingScrollY == null) {
+      return;
+    }
+
+    const restoreScroll = () => window.scrollTo({ top: pendingScrollY, left: window.scrollX, behavior: 'auto' });
+    restoreScroll();
+    window.requestAnimationFrame(() => {
+      restoreScroll();
+      window.setTimeout(() => {
+        restoreScroll();
+        pendingSortScrollYRef.current = null;
+      }, 50);
+    });
+  }, [sort]);
 
   const editableLots = useMemo(() => buildEditableLots(trades), [trades]);
 
@@ -367,6 +385,7 @@ export function PositionsPage() {
   }, [items, sort]);
 
   function toggleSort(key: PositionSortKey) {
+    pendingSortScrollYRef.current = window.scrollY;
     setSort((current) => {
       if (current.key === key) {
         return {
@@ -380,6 +399,21 @@ export function PositionsPage() {
         direction: key === 'ticker' ? 'asc' : 'desc'
       };
     });
+  }
+
+  function renderSortableHeader(label: string, key: PositionSortKey) {
+    return (
+      <th className="px-4 py-3" aria-sort={sort.key === key ? (sort.direction === 'asc' ? 'ascending' : 'descending') : 'none'}>
+        <button
+          type="button"
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={() => toggleSort(key)}
+          className="whitespace-nowrap text-left transition hover:text-white"
+        >
+          {`${label}${renderSortIndicator(sort.key === key, sort.direction)}`}
+        </button>
+      </th>
+    );
   }
 
   function resetLotEditor() {
@@ -657,56 +691,16 @@ export function PositionsPage() {
               <tr>
                 <th className="px-4 py-3">Actions</th>
                 <th className="px-4 py-3">Broker</th>
-                <th className="px-4 py-3">
-                  <button type="button" onClick={() => toggleSort('ticker')} className="whitespace-nowrap text-left transition hover:text-white">
-                    {`Ticker${renderSortIndicator(sort.key === 'ticker', sort.direction)}`}
-                  </button>
-                </th>
-                <th className="px-4 py-3">
-                  <button type="button" onClick={() => toggleSort('quantity')} className="whitespace-nowrap text-left transition hover:text-white">
-                    {`Quantity${renderSortIndicator(sort.key === 'quantity', sort.direction)}`}
-                  </button>
-                </th>
-                <th className="px-4 py-3">
-                  <button type="button" onClick={() => toggleSort('averageCost')} className="whitespace-nowrap text-left transition hover:text-white">
-                    {`Avg Cost${renderSortIndicator(sort.key === 'averageCost', sort.direction)}`}
-                  </button>
-                </th>
-                <th className="px-4 py-3">
-                  <button type="button" onClick={() => toggleSort('latestPrice')} className="whitespace-nowrap text-left transition hover:text-white">
-                    {`Latest Price${renderSortIndicator(sort.key === 'latestPrice', sort.direction)}`}
-                  </button>
-                </th>
-                <th className="px-4 py-3">
-                  <button type="button" onClick={() => toggleSort('costBasis')} className="whitespace-nowrap text-left transition hover:text-white">
-                    {`Cost Basis${renderSortIndicator(sort.key === 'costBasis', sort.direction)}`}
-                  </button>
-                </th>
-                <th className="px-4 py-3">
-                  <button type="button" onClick={() => toggleSort('marketValue')} className="whitespace-nowrap text-left transition hover:text-white">
-                    {`Market Value${renderSortIndicator(sort.key === 'marketValue', sort.direction)}`}
-                  </button>
-                </th>
-                <th className="px-4 py-3">
-                  <button type="button" onClick={() => toggleSort('unrealizedPnL')} className="whitespace-nowrap text-left transition hover:text-white">
-                    {`Unrealized${renderSortIndicator(sort.key === 'unrealizedPnL', sort.direction)}`}
-                  </button>
-                </th>
-                <th className="px-4 py-3">
-                  <button type="button" onClick={() => toggleSort('todaysPnL')} className="whitespace-nowrap text-left transition hover:text-white">
-                    {`Today${renderSortIndicator(sort.key === 'todaysPnL', sort.direction)}`}
-                  </button>
-                </th>
-                <th className="px-4 py-3">
-                  <button type="button" onClick={() => toggleSort('unrealizedReturnRate')} className="whitespace-nowrap text-left transition hover:text-white">
-                    {`Return${renderSortIndicator(sort.key === 'unrealizedReturnRate', sort.direction)}`}
-                  </button>
-                </th>
-                <th className="px-4 py-3">
-                  <button type="button" onClick={() => toggleSort('openLotsCount')} className="whitespace-nowrap text-left transition hover:text-white">
-                    {`Open Lots${renderSortIndicator(sort.key === 'openLotsCount', sort.direction)}`}
-                  </button>
-                </th>
+                {renderSortableHeader('Ticker', 'ticker')}
+                {renderSortableHeader('Quantity', 'quantity')}
+                {renderSortableHeader('Avg Cost', 'averageCost')}
+                {renderSortableHeader('Latest Price', 'latestPrice')}
+                {renderSortableHeader('Cost Basis', 'costBasis')}
+                {renderSortableHeader('Market Value', 'marketValue')}
+                {renderSortableHeader('Unrealized', 'unrealizedPnL')}
+                {renderSortableHeader('Today', 'todaysPnL')}
+                {renderSortableHeader('Return', 'unrealizedReturnRate')}
+                {renderSortableHeader('Open Lots', 'openLotsCount')}
               </tr>
             </thead>
             <tbody>
@@ -954,16 +948,16 @@ export function PositionsPage() {
                 <table className="min-w-full text-sm">
                   <thead className="border-b border-white/10 bg-slate-950/40 text-left text-xs uppercase tracking-[0.22em] text-slate-400">
                     <tr>
-                      <th className="px-4 py-3">Ticker</th>
-                      <th className="px-4 py-3">Quantity</th>
-                      <th className="px-4 py-3">Avg Cost</th>
-                      <th className="px-4 py-3">Latest Price</th>
-                      <th className="px-4 py-3">Cost Basis</th>
-                      <th className="px-4 py-3">Market Value</th>
-                      <th className="px-4 py-3">Unrealized</th>
-                      <th className="px-4 py-3">Today</th>
-                      <th className="px-4 py-3">Return</th>
-                      <th className="px-4 py-3">Open Lots</th>
+                      {renderSortableHeader('Ticker', 'ticker')}
+                      {renderSortableHeader('Quantity', 'quantity')}
+                      {renderSortableHeader('Avg Cost', 'averageCost')}
+                      {renderSortableHeader('Latest Price', 'latestPrice')}
+                      {renderSortableHeader('Cost Basis', 'costBasis')}
+                      {renderSortableHeader('Market Value', 'marketValue')}
+                      {renderSortableHeader('Unrealized', 'unrealizedPnL')}
+                      {renderSortableHeader('Today', 'todaysPnL')}
+                      {renderSortableHeader('Return', 'unrealizedReturnRate')}
+                      {renderSortableHeader('Open Lots', 'openLotsCount')}
                     </tr>
                   </thead>
                   <tbody>

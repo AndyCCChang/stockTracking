@@ -277,6 +277,51 @@ export async function replaceAllAllocations(userId: number, allocations: Persist
   }
 }
 
+export async function replaceAllocationsForSellTrades(
+  userId: number,
+  sellTradeIds: number[],
+  allocations: PersistedAllocationInput[],
+  db?: Queryable
+) {
+  const uniqueSellTradeIds = [...new Set(sellTradeIds)];
+  if (uniqueSellTradeIds.length === 0) {
+    return;
+  }
+
+  await query(
+    `DELETE FROM trade_lot_allocations
+     WHERE "sellTradeId" IN (
+       SELECT id
+       FROM trades
+       WHERE "userId" = $1 AND id = ANY($2::int[])
+     )`,
+    [userId, uniqueSellTradeIds],
+    db
+  );
+
+  const scopedAllocations = allocations.filter((allocation) => uniqueSellTradeIds.includes(allocation.sellTradeId));
+  if (scopedAllocations.length === 0) {
+    return;
+  }
+
+  const now = new Date().toISOString();
+  for (const allocation of scopedAllocations) {
+    await query(
+      `INSERT INTO trade_lot_allocations ("sellTradeId", "buyTradeId", quantity, "createdAt", "buyPriceSnapshot", "buyTradeDateSnapshot")
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [
+        allocation.sellTradeId,
+        allocation.buyTradeId,
+        allocation.quantity,
+        now,
+        allocation.buyPriceSnapshot ?? null,
+        allocation.buyTradeDateSnapshot ?? null
+      ],
+      db
+    );
+  }
+}
+
 export async function clearAllData(db?: Queryable) {
   await query('TRUNCATE TABLE trade_lot_allocations, trades, users RESTART IDENTITY CASCADE', [], db);
 }
