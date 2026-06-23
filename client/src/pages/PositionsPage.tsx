@@ -1,10 +1,16 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { createPortal } from 'react-dom';
+import dayjs from 'dayjs';
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts';
 import {
+  createTrade,
   deleteTrade,
+  fetchAvailableLots,
   fetchPositions,
   fetchTrades,
   updateTrade,
+  type AvailableLot,
+  type LotSelectionMethod,
   type PositionItem,
   type TradePayload,
   type TradeRecord
@@ -31,6 +37,17 @@ type LotFormState = {
   fee: string;
   notes: string;
   currency: string;
+};
+
+type SellFormState = {
+  tradeDate: string;
+  quantity: string;
+  price: string;
+  fee: string;
+  notes: string;
+  currency: string;
+  lotSelectionMethod: LotSelectionMethod;
+  allocations: Record<number, string>;
 };
 
 type PositionSortKey =
@@ -196,6 +213,19 @@ function createLotFormState(lot: EditableLot): LotFormState {
   };
 }
 
+function createSellFormState(item: PositionItem): SellFormState {
+  return {
+    tradeDate: dayjs().format('YYYY-MM-DD'),
+    quantity: '',
+    price: item.latestPrice == null ? '' : String(item.latestPrice),
+    fee: '0',
+    notes: '',
+    currency: item.currency,
+    lotSelectionMethod: 'FIFO',
+    allocations: {}
+  };
+}
+
 
 function CompositionTooltip({
   active,
@@ -233,6 +263,12 @@ export function PositionsPage() {
   const [savingLotId, setSavingLotId] = useState<number | null>(null);
   const [deletingLotId, setDeletingLotId] = useState<number | null>(null);
   const [sort, setSort] = useState<SortState>({ key: 'ticker', direction: 'asc' });
+  const [sellPosition, setSellPosition] = useState<PositionItem | null>(null);
+  const [sellForm, setSellForm] = useState<SellFormState | null>(null);
+  const [sellAvailableLots, setSellAvailableLots] = useState<AvailableLot[]>([]);
+  const [sellLotsLoading, setSellLotsLoading] = useState(false);
+  const [sellError, setSellError] = useState<string | null>(null);
+  const [isSelling, setIsSelling] = useState(false);
 
   async function refreshPositions(options?: { silent?: boolean }) {
     try {
@@ -277,6 +313,56 @@ export function PositionsPage() {
 
     return () => window.clearInterval(intervalId);
   }, []);
+
+  useEffect(() => {
+    if (!sellPosition) {
+      return;
+    }
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [sellPosition]);
+
+  useEffect(() => {
+    if (!sellPosition || !sellForm?.tradeDate) {
+      setSellAvailableLots([]);
+      return;
+    }
+
+    const ticker = sellPosition.ticker;
+    const broker = normalizeBroker(sellPosition.broker);
+    const tradeDate = sellForm.tradeDate;
+    let cancelled = false;
+
+    async function loadSellLots() {
+      try {
+        setSellLotsLoading(true);
+        const response = await fetchAvailableLots(ticker, tradeDate);
+        if (!cancelled) {
+          setSellAvailableLots(response.filter((lot) => normalizeBroker(lot.broker) === broker));
+        }
+      } catch (loadLotsError) {
+        if (!cancelled) {
+          setSellAvailableLots([]);
+          setSellError(loadLotsError instanceof Error ? loadLotsError.message : 'Failed to load available lots');
+        }
+      } finally {
+        if (!cancelled) {
+          setSellLotsLoading(false);
+        }
+      }
+    }
+
+    void loadSellLots();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [sellForm?.tradeDate, sellPosition]);
 
   useLayoutEffect(() => {
     const pendingScrollY = pendingSortScrollYRef.current;
@@ -401,14 +487,14 @@ export function PositionsPage() {
     });
   }
 
-  function renderSortableHeader(label: string, key: PositionSortKey) {
+  function renderSortableHeader(label: string, key: PositionSortKey, compact = false) {
     return (
-      <th className="px-4 py-3" aria-sort={sort.key === key ? (sort.direction === 'asc' ? 'ascending' : 'descending') : 'none'}>
+      <th className={compact ? 'px-2 py-3 leading-tight' : 'px-4 py-3'} aria-sort={sort.key === key ? (sort.direction === 'asc' ? 'ascending' : 'descending') : 'none'}>
         <button
           type="button"
           onMouseDown={(event) => event.preventDefault()}
           onClick={() => toggleSort(key)}
-          className="whitespace-nowrap text-left transition hover:text-white"
+          className={`${compact ? 'whitespace-normal break-words' : 'whitespace-nowrap'} text-left transition hover:text-white`}
         >
           {`${label}${renderSortIndicator(sort.key === key, sort.direction)}`}
         </button>
@@ -419,6 +505,25 @@ export function PositionsPage() {
   function resetLotEditor() {
     setEditingLotId(null);
     setLotForm(null);
+  }
+
+  function openSellPosition(item: PositionItem) {
+    setSellPosition(item);
+    setSellForm(createSellFormState(item));
+    setSellError(null);
+    setActionError(null);
+    setActionMessage(null);
+  }
+
+  function closeSellPosition(options?: { force?: boolean }) {
+    if (isSelling && !options?.force) {
+      return;
+    }
+
+    setSellPosition(null);
+    setSellForm(null);
+    setSellAvailableLots([]);
+    setSellError(null);
   }
 
   function togglePosition(item: PositionItem) {
@@ -530,6 +635,307 @@ export function PositionsPage() {
     } finally {
       setDeletingLotId(null);
     }
+  }
+
+  async function handleSellSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!sellPosition || !sellForm) {
+      return;
+    }
+
+    const quantity = toNumber(sellForm.quantity);
+    const price = toNumber(sellForm.price);
+    const fee = toNumber(sellForm.fee);
+    const allocationEntries = sellAvailableLots
+      .map((lot) => ({ lot, quantity: toNumber(sellForm.allocations[lot.buyTradeId] ?? '0') }))
+      .filter((entry) => entry.quantity > QUANTITY_EPSILON);
+    const allocatedTotal = allocationEntries.reduce((sum, entry) => sum + entry.quantity, 0);
+
+    if (!sellForm.tradeDate) {
+      setSellError('Trade date is required.');
+      return;
+    }
+
+    if (quantity <= 0) {
+      setSellError('SELL quantity must be greater than 0.');
+      return;
+    }
+
+    if (quantity - sellPosition.quantity > QUANTITY_EPSILON) {
+      setSellError(`SELL quantity cannot exceed the open position of ${formatQuantity(sellPosition.quantity)} shares.`);
+      return;
+    }
+
+    if (price <= 0) {
+      setSellError('SELL price must be greater than 0.');
+      return;
+    }
+
+    if (fee < 0) {
+      setSellError('Fee cannot be negative.');
+      return;
+    }
+
+    if (sellForm.lotSelectionMethod === 'SPECIFIC') {
+      if (sellLotsLoading) {
+        setSellError('Available lots are still loading.');
+        return;
+      }
+
+      if (allocationEntries.length === 0) {
+        setSellError('Specific lot selection requires at least one lot allocation.');
+        return;
+      }
+
+      for (const entry of allocationEntries) {
+        if (entry.quantity - entry.lot.availableQuantity > QUANTITY_EPSILON) {
+        setSellError(`Allocation for BUY lot #${entry.lot.buyTradeId} exceeds available quantity.`);
+          return;
+        }
+      }
+
+      if (Math.abs(allocatedTotal - quantity) > QUANTITY_EPSILON) {
+        setSellError('Specific lot allocation total must match the SELL quantity exactly.');
+        return;
+      }
+    }
+
+    const payload: TradePayload = {
+      broker: normalizeBroker(sellPosition.broker),
+      ticker: sellPosition.ticker,
+      tradeDate: sellForm.tradeDate,
+      type: 'SELL',
+      quantity,
+      price,
+      fee,
+      notes: sellForm.notes.trim().length === 0 ? null : sellForm.notes.trim(),
+      currency: sellForm.currency || sellPosition.currency,
+      lotSelectionMethod: sellForm.lotSelectionMethod
+    };
+
+    if (sellForm.lotSelectionMethod === 'SPECIFIC') {
+      payload.allocations = allocationEntries.map((entry) => ({
+        buyTradeId: entry.lot.buyTradeId,
+        quantity: entry.quantity
+      }));
+    }
+
+    try {
+      setIsSelling(true);
+      await createTrade(payload);
+      setSellError(null);
+      setActionError(null);
+      setActionMessage(`Created SELL for ${normalizeBroker(sellPosition.broker)} ${sellPosition.ticker}.`);
+      closeSellPosition({ force: true });
+      await loadData();
+    } catch (sellSubmitError) {
+      setSellError(sellSubmitError instanceof Error ? sellSubmitError.message : 'Failed to create SELL trade');
+    } finally {
+      setIsSelling(false);
+    }
+  }
+
+  function renderSellModal() {
+    if (!sellPosition || !sellForm) {
+      return null;
+    }
+
+    const sellQuantity = toNumber(sellForm.quantity);
+    const allocatedTotal = sellAvailableLots.reduce((sum, lot) => sum + toNumber(sellForm.allocations[lot.buyTradeId] ?? '0'), 0);
+    const remainingAllocation = sellQuantity - allocatedTotal;
+    const estimatedProceeds = sellQuantity * toNumber(sellForm.price) - toNumber(sellForm.fee);
+    const isSpecific = sellForm.lotSelectionMethod === 'SPECIFIC';
+
+    return createPortal(
+      <div className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-950/85 px-4 py-6 backdrop-blur-sm" onClick={() => closeSellPosition()}>
+        <section
+          className="max-h-[92vh] w-full max-w-3xl overflow-auto rounded-3xl border border-white/10 bg-slate-950 p-5 shadow-2xl shadow-black/50"
+          onClick={(event) => event.stopPropagation()}
+        >
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h2 className="text-lg font-semibold text-white">Sell {normalizeBroker(sellPosition.broker)} {sellPosition.ticker}</h2>
+              <p className="mt-1 text-sm text-slate-400">
+                Open position: {formatQuantity(sellPosition.quantity)} shares. Current price: {formatCurrency(sellPosition.latestPrice, sellPosition.currency)}.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => closeSellPosition()}
+              disabled={isSelling}
+              className="rounded-full border border-white/10 px-3 py-1.5 text-xs font-medium text-slate-300 transition hover:text-white disabled:cursor-not-allowed disabled:text-slate-500"
+            >
+              Close
+            </button>
+          </div>
+
+          {sellError ? (
+            <div className="mt-4 rounded-2xl border border-rose-400/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">{sellError}</div>
+          ) : null}
+
+          <form className="mt-5 space-y-5" onSubmit={(event) => void handleSellSubmit(event)}>
+            <div className="grid gap-4 md:grid-cols-2">
+              <label className="space-y-2 text-sm text-slate-300">
+                <span>Trade Date</span>
+                <input
+                  type="date"
+                  value={sellForm.tradeDate}
+                  onChange={(event) => setSellForm((current) => current ? { ...current, tradeDate: event.target.value } : current)}
+                  className="w-full rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3 text-white outline-none transition focus:border-emerald-300/40"
+                />
+              </label>
+              <label className="space-y-2 text-sm text-slate-300">
+                <span>Quantity</span>
+                <input
+                  type="number"
+                  min="0"
+                  max={sellPosition.quantity}
+                  step="0.01"
+                  value={sellForm.quantity}
+                  onChange={(event) => setSellForm((current) => current ? { ...current, quantity: event.target.value } : current)}
+                  placeholder={formatQuantity(sellPosition.quantity)}
+                  className="w-full rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3 text-white outline-none transition focus:border-emerald-300/40"
+                />
+              </label>
+              <label className="space-y-2 text-sm text-slate-300">
+                <span>Sell Price</span>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={sellForm.price}
+                  onChange={(event) => setSellForm((current) => current ? { ...current, price: event.target.value } : current)}
+                  className="w-full rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3 text-white outline-none transition focus:border-emerald-300/40"
+                />
+              </label>
+              <label className="space-y-2 text-sm text-slate-300">
+                <span>Fee</span>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={sellForm.fee}
+                  onChange={(event) => setSellForm((current) => current ? { ...current, fee: event.target.value } : current)}
+                  className="w-full rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3 text-white outline-none transition focus:border-emerald-300/40"
+                />
+              </label>
+            </div>
+
+            <div className="grid gap-3 md:grid-cols-2">
+              {(['FIFO', 'SPECIFIC'] as LotSelectionMethod[]).map((method) => {
+                const isActive = sellForm.lotSelectionMethod === method;
+                return (
+                  <button
+                    key={method}
+                    type="button"
+                    onClick={() => setSellForm((current) => current ? { ...current, lotSelectionMethod: method } : current)}
+                    className={['rounded-2xl border px-4 py-4 text-left transition', isActive ? 'border-emerald-300/40 bg-emerald-400/10 text-white' : 'border-white/10 bg-white/5 text-slate-300'].join(' ')}
+                  >
+                    <span className="text-sm font-semibold">{method === 'FIFO' ? 'FIFO Auto Allocation' : 'Specific Lot Selection'}</span>
+                    <span className="mt-1 block text-xs text-slate-400">
+                      {method === 'FIFO' ? 'Backend will allocate shares using FIFO.' : 'Choose exact BUY lots and quantities for this SELL.'}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {isSpecific ? (
+              <div className="rounded-2xl border border-white/10 bg-white/5">
+                <div className="grid gap-3 border-b border-white/10 px-4 py-3 sm:grid-cols-3">
+                  <Metric label="Allocated" value={formatQuantity(allocatedTotal)} />
+                  <Metric label="Remaining" value={formatQuantity(remainingAllocation)} />
+                  <Metric label="Available Lots" value={sellLotsLoading ? 'Loading' : String(sellAvailableLots.length)} />
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="min-w-full text-sm">
+                    <thead className="border-b border-white/10 bg-slate-950/40 text-left text-xs uppercase tracking-[0.18em] text-slate-400">
+                      <tr>
+                        <th className="px-4 py-3">Lot</th>
+                        <th className="px-4 py-3">Buy Date</th>
+                        <th className="px-4 py-3">Open Qty</th>
+                        <th className="px-4 py-3">Buy Price</th>
+                        <th className="px-4 py-3">Sell Qty</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {sellLotsLoading ? (
+                        <tr>
+                          <td colSpan={5} className="px-4 py-8 text-center text-slate-400">Loading available lots...</td>
+                        </tr>
+                      ) : sellAvailableLots.length === 0 ? (
+                        <tr>
+                          <td colSpan={5} className="px-4 py-8 text-center text-slate-400">No open lots are available for this position.</td>
+                        </tr>
+                      ) : (
+                        sellAvailableLots.map((lot) => (
+                          <tr key={lot.buyTradeId} className="border-b border-white/10 text-slate-200 last:border-b-0">
+                            <td className="px-4 py-3 font-medium text-white">#{lot.buyTradeId}</td>
+                            <td className="px-4 py-3">{lot.tradeDate}</td>
+                            <td className="px-4 py-3">{formatQuantity(lot.availableQuantity)}</td>
+                            <td className="px-4 py-3">{formatCurrency(lot.price, lot.currency)}</td>
+                            <td className="px-4 py-3">
+                              <input
+                                type="number"
+                                min="0"
+                                max={lot.availableQuantity}
+                                step="0.01"
+                                value={sellForm.allocations[lot.buyTradeId] ?? ''}
+                                onChange={(event) => setSellForm((current) => current ? { ...current, allocations: { ...current.allocations, [lot.buyTradeId]: event.target.value } } : current)}
+                                className="w-28 rounded-xl border border-white/10 bg-slate-950/70 px-3 py-2 text-white outline-none transition focus:border-emerald-300/40"
+                                placeholder="0.00"
+                              />
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ) : (
+              <div className="rounded-2xl border border-emerald-300/15 bg-emerald-400/10 px-4 py-3 text-sm text-emerald-100">
+                FIFO mode is active. Use Specific Lot Selection if you need to choose exact BUY lots from this position.
+              </div>
+            )}
+
+            <label className="space-y-2 text-sm text-slate-300">
+              <span>Notes</span>
+              <textarea
+                rows={3}
+                value={sellForm.notes}
+                onChange={(event) => setSellForm((current) => current ? { ...current, notes: event.target.value } : current)}
+                className="w-full rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3 text-white outline-none transition focus:border-emerald-300/40"
+              />
+            </label>
+
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-slate-300">
+                Estimated proceeds: {formatCurrency(estimatedProceeds, sellForm.currency)}
+              </div>
+              <div className="flex flex-wrap gap-3">
+                <button
+                  type="submit"
+                  disabled={isSelling}
+                  className="rounded-full bg-amber-400 px-5 py-2.5 text-sm font-semibold text-slate-950 transition hover:bg-amber-300 disabled:cursor-not-allowed disabled:bg-slate-600 disabled:text-slate-300"
+                >
+                  {isSelling ? 'Selling...' : 'Create SELL'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => closeSellPosition()}
+                  disabled={isSelling}
+                  className="rounded-full border border-white/10 px-5 py-2.5 text-sm font-medium text-slate-300 transition hover:text-white disabled:cursor-not-allowed disabled:text-slate-500"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </form>
+        </section>
+      </div>,
+      document.body
+    );
   }
 
   return (
@@ -695,22 +1101,36 @@ export function PositionsPage() {
           <p className="mt-1 text-sm text-slate-400">Combined open positions across every broker.</p>
         </div>
         <PositionTableTotals summary={summary} />
-        <div className="overflow-x-auto">
-          <table className="min-w-full text-sm">
-            <thead className="border-b border-white/10 bg-slate-950/40 text-left text-xs uppercase tracking-[0.22em] text-slate-400">
+        <div className="overflow-hidden">
+          <table className="w-full table-fixed text-[12px] leading-tight">
+            <colgroup>
+              <col className="w-[9%]" />
+              <col className="w-[9%]" />
+              <col className="w-[8%]" />
+              <col className="w-[7%]" />
+              <col className="w-[8%]" />
+              <col className="w-[8%]" />
+              <col className="w-[9%]" />
+              <col className="w-[9%]" />
+              <col className="w-[9%]" />
+              <col className="w-[8%]" />
+              <col className="w-[7%]" />
+              <col className="w-[6%]" />
+            </colgroup>
+            <thead className="border-b border-white/10 bg-slate-950/40 text-left text-[10px] uppercase tracking-[0.12em] text-slate-400">
               <tr>
-                <th className="px-4 py-3">Actions</th>
-                <th className="px-4 py-3">Broker</th>
-                {renderSortableHeader('Ticker', 'ticker')}
-                {renderSortableHeader('Quantity', 'quantity')}
-                {renderSortableHeader('Avg Cost', 'averageCost')}
-                {renderSortableHeader('Latest Price', 'latestPrice')}
-                {renderSortableHeader('Cost Basis', 'costBasis')}
-                {renderSortableHeader('Market Value', 'marketValue')}
-                {renderSortableHeader('Unrealized', 'unrealizedPnL')}
-                {renderSortableHeader('Today', 'todaysPnL')}
-                {renderSortableHeader('Return', 'unrealizedReturnRate')}
-                {renderSortableHeader('Open Lots', 'openLotsCount')}
+                <th className="px-2 py-3 leading-tight">Actions</th>
+                <th className="px-2 py-3 leading-tight">Broker</th>
+                {renderSortableHeader('Ticker', 'ticker', true)}
+                {renderSortableHeader('Quantity', 'quantity', true)}
+                {renderSortableHeader('Avg Cost', 'averageCost', true)}
+                {renderSortableHeader('Latest Price', 'latestPrice', true)}
+                {renderSortableHeader('Cost Basis', 'costBasis', true)}
+                {renderSortableHeader('Market Value', 'marketValue', true)}
+                {renderSortableHeader('Unrealized', 'unrealizedPnL', true)}
+                {renderSortableHeader('Today', 'todaysPnL', true)}
+                {renderSortableHeader('Return', 'unrealizedReturnRate', true)}
+                {renderSortableHeader('Open Lots', 'openLotsCount', true)}
               </tr>
             </thead>
             <tbody>
@@ -734,38 +1154,38 @@ export function PositionsPage() {
 
                   return [
                     <tr key={positionKey} className="border-b border-white/10 text-slate-200 last:border-b-0">
-                      <td className="px-4 py-4">
+                      <td className="px-2 py-3">
                         <button
                           type="button"
                           onClick={() => togglePosition(item)}
-                          className="rounded-full border border-emerald-300/30 bg-emerald-400/10 px-3 py-1.5 text-xs font-medium text-emerald-200 transition hover:bg-emerald-400/20"
+                          className="rounded-full border border-emerald-300/30 bg-emerald-400/10 px-2 py-1 text-[11px] font-medium leading-tight text-emerald-200 transition hover:bg-emerald-400/20"
                         >
                           {isExpanded ? 'Hide Lots' : 'Manage Lots'}
                         </button>
                       </td>
-                      <td className="px-4 py-4">
-                        <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-xs font-medium text-slate-200">{normalizeBroker(item.broker)}</span>
+                      <td className="break-words px-2 py-3">
+                        <span className="rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-[11px] font-medium text-slate-200">{normalizeBroker(item.broker)}</span>
                       </td>
-                      <td className="px-4 py-4">
+                      <td className="break-words px-2 py-3">
                         <div className="font-medium text-white">{item.ticker}</div>
-                        <div className="mt-1 text-xs text-slate-400">Current: {formatCurrency(item.latestPrice, item.currency)}</div>
+                        <div className="mt-1 text-[10px] text-slate-400">{formatCurrency(item.latestPrice, item.currency)}</div>
                       </td>
-                      <td className="px-4 py-4">{item.quantity.toFixed(2)}</td>
-                      <td className="px-4 py-4">{formatCurrency(item.averageCost, item.currency)}</td>
-                      <td className="px-4 py-4">{formatCurrency(item.latestPrice, item.currency)}</td>
-                      <td className="px-4 py-4">{formatCurrency(item.costBasis, item.currency)}</td>
-                      <td className="px-4 py-4">{formatCurrency(item.marketValue, item.currency)}</td>
-                      <td className={`px-4 py-4 font-semibold ${getTone(item.unrealizedPnL)}`}>
+                      <td className="break-words px-2 py-3">{item.quantity.toFixed(2)}</td>
+                      <td className="break-words px-2 py-3">{formatCurrency(item.averageCost, item.currency)}</td>
+                      <td className="break-words px-2 py-3">{formatCurrency(item.latestPrice, item.currency)}</td>
+                      <td className="break-words px-2 py-3">{formatCurrency(item.costBasis, item.currency)}</td>
+                      <td className="break-words px-2 py-3">{formatCurrency(item.marketValue, item.currency)}</td>
+                      <td className={`break-words px-2 py-3 font-semibold ${getTone(item.unrealizedPnL)}`}>
                         {formatCurrency(item.unrealizedPnL, item.currency)}
                       </td>
-                      <td className={`px-4 py-4 font-semibold ${getTone(item.todaysPnL)}`}>
+                      <td className={`break-words px-2 py-3 font-semibold ${getTone(item.todaysPnL)}`}>
                         <div>{formatCurrency(item.todaysPnL, item.currency)}</div>
                         
                       </td>
-                      <td className={`px-4 py-4 ${getTone(item.unrealizedReturnRate)}`}>
+                      <td className={`break-words px-2 py-3 ${getTone(item.unrealizedReturnRate)}`}>
                         {formatPercent(item.unrealizedReturnRate)}
                       </td>
-                      <td className="px-4 py-4">{item.openLotsCount}</td>
+                      <td className="break-words px-2 py-3">{item.openLotsCount}</td>
                     </tr>,
                     isExpanded ? (
                       <tr key={`${positionKey}-editor`} className="border-b border-white/10 bg-slate-950/20 text-slate-200 last:border-b-0">
@@ -779,6 +1199,13 @@ export function PositionsPage() {
                                 </p>
                               </div>
                               <div className="flex flex-wrap gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => openSellPosition(item)}
+                                  className="rounded-full border border-amber-300/30 bg-amber-400/10 px-3 py-1 text-xs font-medium text-amber-100 transition hover:bg-amber-400/20"
+                                >
+                                  Sell Position
+                                </button>
                                 <div className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-300">
                                   {lots.length} lot{lots.length === 1 ? '' : 's'} available
                                 </div>
@@ -992,6 +1419,7 @@ export function PositionsPage() {
           ))}
         </section>
       ) : null}
+      {renderSellModal()}
     </section>
   );
 }
