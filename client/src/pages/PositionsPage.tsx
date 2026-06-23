@@ -328,6 +328,21 @@ export function PositionsPage() {
   }, [sellPosition]);
 
   useEffect(() => {
+    if (!sellPosition) {
+      return;
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        closeSellPosition();
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isSelling, sellPosition]);
+
+  useEffect(() => {
     if (!sellPosition || !sellForm?.tradeDate) {
       setSellAvailableLots([]);
       return;
@@ -747,10 +762,9 @@ export function PositionsPage() {
     const isSpecific = sellForm.lotSelectionMethod === 'SPECIFIC';
 
     return createPortal(
-      <div className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-950/85 px-4 py-6 backdrop-blur-sm" onClick={() => closeSellPosition()}>
+      <div className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-950/85 px-4 py-6 backdrop-blur-sm">
         <section
           className="max-h-[92vh] w-full max-w-3xl overflow-auto rounded-3xl border border-white/10 bg-slate-950 p-5 shadow-2xl shadow-black/50"
-          onClick={(event) => event.stopPropagation()}
         >
           <div className="flex items-start justify-between gap-4">
             <div>

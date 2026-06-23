@@ -526,6 +526,30 @@ export function TradesPage() {
   }, [isJsonEditorOpen, isTradeFormOpen]);
 
   useEffect(() => {
+    if (!isJsonEditorOpen && !isTradeFormOpen) {
+      return;
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key !== 'Escape') {
+        return;
+      }
+
+      if (isJsonEditorOpen) {
+        setIsJsonEditorOpen(false);
+        return;
+      }
+
+      if (isTradeFormOpen && !isSubmitting) {
+        setIsTradeFormOpen(false);
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isJsonEditorOpen, isSubmitting, isTradeFormOpen]);
+
+  useEffect(() => {
     if (!isSpecific) {
       setAvailableLots([]);
       setLotsError(null);
@@ -1364,8 +1388,8 @@ export function TradesPage() {
 
         {isTradeFormOpen
           ? createPortal(
-            <div className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-950/85 px-4 py-6 backdrop-blur-sm" onClick={() => setIsTradeFormOpen(false)}>
-              <section className="max-h-[92vh] w-full max-w-3xl overflow-auto rounded-3xl border border-white/10 bg-slate-950 p-5 shadow-2xl shadow-black/50" onClick={(event) => event.stopPropagation()}>
+            <div className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-950/85 px-4 py-6 backdrop-blur-sm">
+              <section className="max-h-[92vh] w-full max-w-3xl overflow-auto rounded-3xl border border-white/10 bg-slate-950 p-5 shadow-2xl shadow-black/50">
           <div className="flex items-start justify-between gap-4">
             <div>
               <h2 className="text-lg font-semibold text-white">{editingTrade ? 'Edit Trade' : 'New Trade'}</h2>
@@ -1797,10 +1821,9 @@ export function TradesPage() {
 
       {isJsonEditorOpen
         ? createPortal(
-            <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/85 px-4 py-6 backdrop-blur-sm" onClick={() => setIsJsonEditorOpen(false)}>
+            <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/85 px-4 py-6 backdrop-blur-sm">
               <div
                 className="flex h-[min(92vh,920px)] w-full max-w-6xl flex-col overflow-hidden rounded-3xl border border-white/10 bg-slate-950 shadow-2xl shadow-black/50"
-                onClick={(event) => event.stopPropagation()}
               >
                 <div className="flex flex-col gap-4 border-b border-white/10 px-5 py-4 lg:flex-row lg:items-start lg:justify-between">
                   <div className="max-w-3xl">
