@@ -1,9 +1,10 @@
 import { Router } from 'express';
 import { toCsv } from '../lib/csv.js';
-import { validateSummaryYear } from '../lib/validation.js';
+import { validateDateRangeQuery, validateSummaryYear } from '../lib/validation.js';
 import { authenticateJWT } from '../middleware/authenticateJWT.js';
 import {
   getDashboardAnalytics,
+  getDateRangePerformanceAnalytics,
   getMonthlySummaryAnalytics,
   getPerformanceAnalytics,
   getPositionsAnalytics,
@@ -82,6 +83,18 @@ router.get('/monthly-summary', async (req, res, next) => {
   try {
     const year = validateSummaryYear(typeof req.query.year === 'string' ? req.query.year : undefined);
     res.json(await getMonthlySummaryAnalytics(req.user!.userId, year));
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get('/range-performance', async (req, res, next) => {
+  try {
+    const range = validateDateRangeQuery({
+      startDate: typeof req.query.startDate === 'string' ? req.query.startDate : undefined,
+      endDate: typeof req.query.endDate === 'string' ? req.query.endDate : undefined
+    });
+    res.json(await getDateRangePerformanceAnalytics(req.user!.userId, range.startDate, range.endDate));
   } catch (error) {
     next(error);
   }

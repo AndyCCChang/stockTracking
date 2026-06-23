@@ -318,6 +318,25 @@ export function validateSummaryYear(value: string | undefined) {
   return value;
 }
 
+export function validateDateRangeQuery(query: Record<string, string | undefined>) {
+  const startDate = query.startDate?.trim() ?? '';
+  const endDate = query.endDate?.trim() ?? '';
+
+  if (!startDate || !isValidDate(startDate)) {
+    throw new ValidationError('startDate must be a valid date');
+  }
+
+  if (!endDate || !isValidDate(endDate)) {
+    throw new ValidationError('endDate must be a valid date');
+  }
+
+  if (dayjs(endDate).isBefore(dayjs(startDate))) {
+    throw new ValidationError('endDate cannot be earlier than startDate');
+  }
+
+  return { startDate, endDate };
+}
+
 export function validateAvailableLotsQuery(query: Record<string, string | undefined>) {
   const ticker = normalizeTicker(query.ticker);
   const tradeDate = query.tradeDate?.trim() ?? '';

@@ -11,6 +11,9 @@ import {
 import { getLatestPrice, getLatestPriceQuote, type LatestPriceQuote } from './priceService.js';
 import type {
   DashboardResponse,
+  DateRangePerformanceItem,
+  DateRangePerformanceResponse,
+  DateRangePerformanceSummary,
   DistributionPoint,
   MonthlySummaryItem,
   MonthlySummaryResponse,
@@ -167,6 +170,80 @@ function buildUnrealizedDistribution(items: UnrealizedSummary[]): DistributionPo
     .map((item) => ({ ticker: item.ticker, value: round(item.unrealizedPnL ?? 0) }));
 }
 
+function isDateInRange(date: string, startDate: string, endDate: string) {
+  return date >= startDate && date <= endDate;
+}
+
+function laterDate(left: dayjs.Dayjs, right: dayjs.Dayjs) {
+  return left.isAfter(right) ? left : right;
+}
+
+function earlierDate(left: dayjs.Dayjs, right: dayjs.Dayjs) {
+  return left.isBefore(right) ? left : right;
+}
+
+function buildRangeSummary(
+  trades: TradeRecord[],
+  realizedItems: RealizedApiItem[],
+  unrealized: UnrealizedSummary[],
+  startDate: string,
+  endDate: string
+): DateRangePerformanceSummary {
+  const rangeTrades = trades.filter((trade) => isDateInRange(trade.tradeDate, startDate, endDate));
+  const realizedPnL = realizedItems
+    .filter((item) => isDateInRange(item.sellDate, startDate, endDate))
+    .reduce((sum, item) => sum + item.realizedPnL, 0);
+  const buyAmount = rangeTrades.filter((trade) => trade.type === 'BUY').reduce((sum, trade) => sum + trade.quantity * trade.price, 0);
+  const sellAmount = rangeTrades.filter((trade) => trade.type === 'SELL').reduce((sum, trade) => sum + trade.quantity * trade.price, 0);
+  const today = dayjs().format('YYYY-MM-DD');
+  const unrealizedPnL = isDateInRange(today, startDate, endDate) ? sumNullable(unrealized.map((item) => item.unrealizedPnL)) : 0;
+  const denominator = buyAmount === 0 ? sellAmount : buyAmount;
+
+  return {
+    realizedPnL: round(realizedPnL),
+    unrealizedPnL: roundNullable(unrealizedPnL),
+    tradeCount: rangeTrades.length,
+    buyAmount: round(buyAmount),
+    sellAmount: round(sellAmount),
+    returnRate: unrealizedPnL == null ? null : denominator === 0 ? 0 : round((realizedPnL + unrealizedPnL) / denominator)
+  };
+}
+
+function buildRangePeriods(
+  trades: TradeRecord[],
+  realizedItems: RealizedApiItem[],
+  unrealized: UnrealizedSummary[],
+  startDate: string,
+  endDate: string
+): DateRangePerformanceItem[] {
+  const periods: DateRangePerformanceItem[] = [];
+  let cursor = dayjs(startDate).startOf('month');
+  const end = dayjs(endDate).startOf('month');
+
+  while (cursor.isBefore(end) || cursor.isSame(end)) {
+    const periodStart = laterDate(cursor, dayjs(startDate)).format('YYYY-MM-DD');
+    const periodEnd = earlierDate(cursor.endOf('month'), dayjs(endDate)).format('YYYY-MM-DD');
+    const summary = buildRangeSummary(trades, realizedItems, unrealized, periodStart, periodEnd);
+
+    periods.push({
+      period: cursor.format('YYYY-MM'),
+      month: cursor.format('MM'),
+      startDate: periodStart,
+      endDate: periodEnd,
+      realizedPnL: summary.realizedPnL,
+      unrealizedPnL: summary.unrealizedPnL,
+      tradeCount: summary.tradeCount,
+      buyAmount: summary.buyAmount,
+      sellAmount: summary.sellAmount,
+      returnRate: summary.returnRate
+    });
+
+    cursor = cursor.add(1, 'month');
+  }
+
+  return periods;
+}
+
 function createEmptyDashboard(): DashboardResponse {
   return {
     totalCostBasis: 0,
@@ -315,4 +392,21 @@ export async function getMonthlySummaryAnalytics(userId: number, year: string): 
   });
 
   return { year, months };
+}
+
+export async function getDateRangePerformanceAnalytics(
+  userId: number,
+  startDate: string,
+  endDate: string
+): Promise<DateRangePerformanceResponse> {
+  const { trades, allocations }: { trades: TradeRecord[]; allocations: TradeLotAllocationRecord[] } = await getDataset(userId);
+  const realizedItems = buildRealizedItems(trades, allocations);
+  const unrealized = await calculateUnrealizedPnL(trades, allocations, getLatestPrice);
+
+  return {
+    startDate,
+    endDate,
+    summary: buildRangeSummary(trades, realizedItems, unrealized, startDate, endDate),
+    periods: buildRangePeriods(trades, realizedItems, unrealized, startDate, endDate)
+  };
 }

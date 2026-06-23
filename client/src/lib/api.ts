@@ -252,6 +252,28 @@ export type MonthlySummaryResponse = {
   months: MonthlySummaryItem[];
 };
 
+export type DateRangePerformanceSummary = {
+  realizedPnL: number;
+  unrealizedPnL: number | null;
+  tradeCount: number;
+  buyAmount: number;
+  sellAmount: number;
+  returnRate: number | null;
+};
+
+export type DateRangePerformanceItem = MonthlySummaryItem & {
+  period: string;
+  startDate: string;
+  endDate: string;
+};
+
+export type DateRangePerformanceResponse = {
+  startDate: string;
+  endDate: string;
+  summary: DateRangePerformanceSummary;
+  periods: DateRangePerformanceItem[];
+};
+
 const configuredApiUrl = import.meta.env.VITE_API_URL?.trim();
 const apiBaseUrl = configuredApiUrl && configuredApiUrl.length > 0 ? configuredApiUrl.replace(/\/$/, '') : '/api';
 
@@ -520,6 +542,17 @@ export async function fetchMonthlySummary(year: string) {
   try {
     const { data } = await api.get<MonthlySummaryResponse>('/monthly-summary', {
       params: { year }
+    });
+    return data;
+  } catch (error) {
+    throw new Error(normalizeErrorMessage(error));
+  }
+}
+
+export async function fetchRangePerformance(startDate: string, endDate: string) {
+  try {
+    const { data } = await api.get<DateRangePerformanceResponse>('/range-performance', {
+      params: { startDate, endDate }
     });
     return data;
   } catch (error) {

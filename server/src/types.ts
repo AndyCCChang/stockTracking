@@ -320,3 +320,25 @@ export type MonthlySummaryResponse = {
   year: string;
   months: MonthlySummaryItem[];
 };
+
+export type DateRangePerformanceSummary = {
+  realizedPnL: number;
+  unrealizedPnL: number | null;
+  tradeCount: number;
+  buyAmount: number;
+  sellAmount: number;
+  returnRate: number | null;
+};
+
+export type DateRangePerformanceItem = MonthlySummaryItem & {
+  period: string;
+  startDate: string;
+  endDate: string;
+};
+
+export type DateRangePerformanceResponse = {
+  startDate: string;
+  endDate: string;
+  summary: DateRangePerformanceSummary;
+  periods: DateRangePerformanceItem[];
+};

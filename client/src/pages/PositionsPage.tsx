@@ -505,6 +505,16 @@ export function PositionsPage() {
       return;
     }
 
+    const confirmed = window.confirm(
+      `Delete BUY lot #${lot.id} for ${normalizeBroker(lot.broker)} ${lot.ticker}?\n\n` +
+      `Trade date: ${lot.tradeDate}\n` +
+      `Open quantity: ${formatQuantity(lot.availableQuantity)} shares\n\n` +
+      'This cannot be undone.'
+    );
+    if (!confirmed) {
+      return;
+    }
+
     try {
       setDeletingLotId(lot.id);
       await deleteTrade(lot.id);
