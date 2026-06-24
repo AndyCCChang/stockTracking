@@ -79,16 +79,25 @@ Copy `.env.example` and fill in the values you need.
   `https://your-render-service.onrender.com/api`
 
 ## Local Development
+Start the local PostgreSQL database:
+```bash
+npm run dev:db
+```
+
+Copy the example environment file once:
+```bash
+copy .env.example .env
+```
+
 Start both apps:
 ```bash
 npm run dev
 ```
 
 Development note:
-- If `DATABASE_URL` is not set locally, the server now falls back to an in-memory Postgres-compatible database for development only.
-- This removes the immediate GUI error when PostgreSQL is not installed, but the data is not persisted between server restarts.
-- In memory mode, the app auto-seeds the demo account `demo@example.com` / `DemoPass123!`.
-- To keep real persistent local data, set `DATABASE_URL` to a running PostgreSQL instance.
+- Local development now uses PostgreSQL by default, so trades and users persist across server restarts.
+- The Docker database stores data in the `stock_tracking_pgdata` volume.
+- Use `DATABASE_MODE=memory` only when you intentionally want temporary demo data that disappears after restart.
 
 Start only the client:
 ```bash
